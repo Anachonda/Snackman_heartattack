@@ -825,7 +825,7 @@ export function drawLevelComplete(ctx: CanvasRenderingContext2D, level: number, 
 
   ctx.fillStyle = '#86efac';
   ctx.font = '16px monospace';
-  ctx.fillText('+20 health bonus!  Stress reduced!', CANVAS_W / 2, CANVAS_H / 2 + 52);
+  ctx.fillText('Full health restored!  Stress cleared!', CANVAS_W / 2, CANVAS_H / 2 + 52);
 
   ctx.fillStyle = '#fef9c3';
   ctx.font = 'bold 18px monospace';
@@ -944,16 +944,37 @@ export function drawGameOver(ctx: CanvasRenderingContext2D, phase: string, score
   ctx.textBaseline = 'middle';
   ctx.fillText('FINAL SCORE: ' + score, CANVAS_W / 2, 420);
 
-  const blink = 0.5 + 0.5 * Math.sin(time * 0.1);
-  ctx.globalAlpha = blink;
-  glow(ctx, '#4ade80', 8);
+  // RETRY button
+  const bw = 220, bh = 46, gap = 20;
+  const totalW = bw * 2 + gap;
+  const bx1 = (CANVAS_W - totalW) / 2;
+  const bx2 = bx1 + bw + gap;
+  const by  = 455;
+
+  ctx.fillStyle = '#166534';
+  ctx.beginPath();
+  _rrPath(ctx, bx1, by, bw, bh, 10);
+  ctx.fill();
+  glow(ctx, '#22c55e', 8);
   ctx.fillStyle = '#4ade80';
-  ctx.font = 'bold 18px monospace';
+  ctx.font = 'bold 17px monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('PRESS ENTER OR CLICK TO RETRY', CANVAS_W / 2, 480);
+  ctx.fillText('RETRY  (Enter)', bx1 + bw / 2, by + bh / 2);
   noGlow(ctx);
-  ctx.globalAlpha = 1;
+
+  // MAIN MENU button
+  ctx.fillStyle = '#1e3a5f';
+  ctx.beginPath();
+  _rrPath(ctx, bx2, by, bw, bh, 10);
+  ctx.fill();
+  glow(ctx, '#3b82f6', 8);
+  ctx.fillStyle = '#93c5fd';
+  ctx.font = 'bold 17px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('MAIN MENU', bx2 + bw / 2, by + bh / 2);
+  noGlow(ctx);
 
   ctx.fillStyle = '#475569';
   ctx.font = 'italic 13px serif';

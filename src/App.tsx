@@ -230,8 +230,10 @@ export default function App() {
     }
   }, [startGame, togglePause, goToTitle]);
 
+  const aspectRatio = CANVAS_W / CANVAS_H;
+
   return (
-    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center select-none">
+    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center select-none p-2">
       <canvas
         ref={canvasRef}
         width={CANVAS_W}
@@ -240,9 +242,12 @@ export default function App() {
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
         className="block rounded-xl shadow-2xl cursor-pointer border border-blue-900"
-        style={{ maxWidth: '100%' }}
+        style={{
+          width: `min(95vw, calc(95vh * ${aspectRatio}))`,
+          height: `min(95vh, calc(95vw / ${aspectRatio}))`,
+        }}
       />
-      <p className="mt-3 text-gray-600 text-xs font-mono">
+      <p className="mt-2 text-gray-600 text-xs font-mono text-center">
         WASD / ARROW KEYS to move &nbsp;·&nbsp; Stand still near a couch to chill &nbsp;·&nbsp; ESC to pause
       </p>
     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { CANVAS_W, CANVAS_H, ENEMIES } from './game/constants';
 import { createInitialState, tickEngine, advanceLevel, EngineState } from './game/engine';
 import {
@@ -38,12 +38,114 @@ function hitTest(x: number, y: number, r: typeof PAUSE_BTN) {
   return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 }
 
+// ── Mobile detection ──────────────────────────────────────────────────────────
+
+function isMobileDevice() {
+  return /Android|iPhone|iPad|iPod|Touch/i.test(navigator.userAgent) ||
+    ('ontouchstart' in window) ||
+    (navigator.maxTouchPoints > 0 && window.innerWidth <= 1024);
+}
+
+// ── D-pad component ───────────────────────────────────────────────────────────
+
+type DDir = 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight';
+
+interface DPadProps {
+  onPress: (dir: DDir) => void;
+  onRelease: (dir: DDir) => void;
+}
+
+function DPad({ onPress, onRelease }: DPadProps) {
+  const activeRef = useRef<Set<DDir>>(new Set());
+
+  function handleTouch(e: React.TouchEvent, dir: DDir, isStart: boolean) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isStart) {
+      if (!activeRef.current.has(dir)) {
+        activeRef.current.add(dir);
+        onPress(dir);
+      }
+    } else {
+      if (activeRef.current.has(dir)) {
+        activeRef.current.delete(dir);
+        onRelease(dir);
+      }
+    }
+  }
+
+  function btn(dir: DDir, label: string, style: React.CSSProperties) {
+    return (
+      <div
+        key={dir}
+        onTouchStart={e => handleTouch(e, dir, true)}
+        onTouchEnd={e => handleTouch(e, dir, false)}
+        onTouchCancel={e => handleTouch(e, dir, false)}
+        style={{
+          position: 'absolute',
+          width: 52,
+          height: 52,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(30, 80, 180, 0.45)',
+          border: '2px solid rgba(96, 165, 250, 0.7)',
+          borderRadius: 10,
+          color: 'rgba(186, 220, 255, 0.92)',
+          fontSize: 22,
+          fontFamily: 'monospace',
+          fontWeight: 'bold',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          touchAction: 'none',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12)',
+          cursor: 'pointer',
+          ...style,
+        }}
+      >
+        {label}
+      </div>
+    );
+  }
+
+  const S = 52;   // button size
+  const G = 6;    // gap
+  const pad = S + G;
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        bottom: 20,
+        left: 20,
+        width: pad * 3 - G,
+        height: pad * 3 - G,
+        pointerEvents: 'auto',
+        touchAction: 'none',
+      }}
+    >
+      {btn('ArrowUp',    '▲', { left: pad,      top: 0 })}
+      {btn('ArrowLeft',  '◀', { left: 0,        top: pad })}
+      {btn('ArrowDown',  '▼', { left: pad,      top: pad * 2 })}
+      {btn('ArrowRight', '▶', { left: pad * 2,  top: pad })}
+      {/* centre dead-zone */}
+      <div style={{
+        position: 'absolute', left: pad, top: pad, width: S, height: S,
+        background: 'rgba(15, 30, 70, 0.55)',
+        border: '2px solid rgba(96,165,250,0.3)',
+        borderRadius: 10,
+      }} />
+    </div>
+  );
+}
+
 export default function App() {
   const canvasRef   = useRef<HTMLCanvasElement>(null);
   const stateRef    = useRef<EngineState>(createInitialState());
   const rafRef      = useRef<number>(0);
   const frameRef    = useRef(0);
   const mouseRef    = useRef<{ x: number; y: number }>({ x: -1, y: -1 });
+  const [isMobile]  = useState(() => isMobileDevice());
 
   const startGame = useCallback(() => {
     stateRef.current = createInitialState();
@@ -244,26 +346,65 @@ export default function App() {
     }
   }, [startGame, togglePause, goToTitle]);
 
+  const handleDPadPress = useCallback((dir: DDir) => {
+    stateRef.current.keys.add(dir);
+    const p = stateRef.current.gs.phase;
+    if (p === 'title' || p === 'dead_health' || p === 'dead_stress') startGame();
+  }, [startGame]);
+
+  const handleDPadRelease = useCallback((dir: DDir) => {
+    stateRef.current.keys.delete(dir);
+  }, []);
+
   const aspectRatio = CANVAS_W / CANVAS_H;
+
+  // Prevent page scroll when touching the canvas on mobile
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el || !isMobile) return;
+    const prevent = (e: TouchEvent) => e.preventDefault();
+    el.addEventListener('touchstart', prevent, { passive: false });
+    el.addEventListener('touchmove',  prevent, { passive: false });
+    return () => {
+      el.removeEventListener('touchstart', prevent);
+      el.removeEventListener('touchmove',  prevent);
+    };
+  }, [isMobile]);
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center select-none p-2">
-      <canvas
-        ref={canvasRef}
-        width={CANVAS_W}
-        height={CANVAS_H}
-        onClick={handleClick}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
-        className="block rounded-xl shadow-2xl cursor-pointer border border-blue-900"
-        style={{
-          width: `min(95vw, calc(95vh * ${aspectRatio}))`,
-          height: `min(95vh, calc(95vw / ${aspectRatio}))`,
-        }}
-      />
-      <p className="mt-2 text-gray-600 text-xs font-mono text-center">
-        WASD / ARROW KEYS to move &nbsp;·&nbsp; Stand still near a couch to chill &nbsp;·&nbsp; ESC to pause
-      </p>
+      <div style={{ position: 'relative', display: 'inline-block' }}>
+        <canvas
+          ref={canvasRef}
+          width={CANVAS_W}
+          height={CANVAS_H}
+          onClick={handleClick}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={handleMouseLeave}
+          className="block rounded-xl shadow-2xl cursor-pointer border border-blue-900"
+          style={{
+            width: `min(95vw, calc(95vh * ${aspectRatio}))`,
+            height: `min(95vh, calc(95vw / ${aspectRatio}))`,
+            touchAction: 'none',
+          }}
+        />
+        {isMobile && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            borderRadius: 12,
+            overflow: 'hidden',
+          }}>
+            <DPad onPress={handleDPadPress} onRelease={handleDPadRelease} />
+          </div>
+        )}
+      </div>
+      {!isMobile && (
+        <p className="mt-2 text-gray-600 text-xs font-mono text-center">
+          WASD / ARROW KEYS to move &nbsp;·&nbsp; Stand still near a couch to chill &nbsp;·&nbsp; ESC to pause
+        </p>
+      )}
     </div>
   );
 }

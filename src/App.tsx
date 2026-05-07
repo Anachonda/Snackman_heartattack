@@ -6,7 +6,7 @@ import {
   playGhostHit, playEmailHit, playBlobHit,
   playLevelComplete, playHeartAttack, playBurnout,
   playRelax, playTiredPuff, playFootstep, playStressManWarning,
-  updateMusic, stopMusic,
+  updateMusic, stopMusic, unlockAudio,
 } from './game/sounds';
 import {
   drawMaze,
@@ -83,22 +83,22 @@ function DPad({ onPress, onRelease }: DPadProps) {
         onTouchCancel={e => handleTouch(e, dir, false)}
         style={{
           position: 'absolute',
-          width: 52,
-          height: 52,
+          width: 40,
+          height: 40,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           background: 'rgba(30, 80, 180, 0.45)',
           border: '2px solid rgba(96, 165, 250, 0.7)',
-          borderRadius: 10,
+          borderRadius: 8,
           color: 'rgba(186, 220, 255, 0.92)',
-          fontSize: 22,
+          fontSize: 17,
           fontFamily: 'monospace',
           fontWeight: 'bold',
           userSelect: 'none',
           WebkitUserSelect: 'none',
           touchAction: 'none',
-          boxShadow: '0 2px 12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12)',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12)',
           cursor: 'pointer',
           ...style,
         }}
@@ -108,32 +108,33 @@ function DPad({ onPress, onRelease }: DPadProps) {
     );
   }
 
-  const S = 52;   // button size
-  const G = 6;    // gap
+  const S = 40;  // button size
+  const G = 5;   // gap
   const pad = S + G;
 
   return (
     <div
       style={{
-        position: 'absolute',
-        bottom: 20,
-        left: 20,
+        position: 'fixed',
+        bottom: 'max(12px, env(safe-area-inset-bottom, 12px))',
+        left: 'max(12px, env(safe-area-inset-left, 12px))',
         width: pad * 3 - G,
         height: pad * 3 - G,
         pointerEvents: 'auto',
         touchAction: 'none',
+        zIndex: 100,
       }}
     >
-      {btn('ArrowUp',    '▲', { left: pad,      top: 0 })}
-      {btn('ArrowLeft',  '◀', { left: 0,        top: pad })}
-      {btn('ArrowDown',  '▼', { left: pad,      top: pad * 2 })}
-      {btn('ArrowRight', '▶', { left: pad * 2,  top: pad })}
+      {btn('ArrowUp',    '▲', { left: pad,     top: 0 })}
+      {btn('ArrowLeft',  '◀', { left: 0,       top: pad })}
+      {btn('ArrowDown',  '▼', { left: pad,     top: pad * 2 })}
+      {btn('ArrowRight', '▶', { left: pad * 2, top: pad })}
       {/* centre dead-zone */}
       <div style={{
         position: 'absolute', left: pad, top: pad, width: S, height: S,
         background: 'rgba(15, 30, 70, 0.55)',
         border: '2px solid rgba(96,165,250,0.3)',
-        borderRadius: 10,
+        borderRadius: 8,
       }} />
     </div>
   );
@@ -293,6 +294,17 @@ export default function App() {
     };
   }, [startGame, togglePause]);
 
+  // Unlock audio on first touch (mobile autoplay policy)
+  useEffect(() => {
+    if (!isMobile) return;
+    const handler = () => {
+      unlockAudio();
+      document.removeEventListener('touchstart', handler);
+    };
+    document.addEventListener('touchstart', handler, { once: true });
+    return () => document.removeEventListener('touchstart', handler);
+  }, [isMobile]);
+
   // Track mouse position in canvas coords for hover effects
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -346,6 +358,42 @@ export default function App() {
     }
   }, [startGame, togglePause, goToTitle]);
 
+  // Handle touch taps on the canvas — translates to canvas coords and fires the
+  // same hit-test logic as handleClick so the pause button works on mobile.
+  const handleCanvasTouch = useCallback((e: React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas || e.changedTouches.length === 0) return;
+    const touch = e.changedTouches[0];
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = CANVAS_W / rect.width;
+    const scaleY = CANVAS_H / rect.height;
+    const cx = (touch.clientX - rect.left) * scaleX;
+    const cy = (touch.clientY - rect.top)  * scaleY;
+
+    const p = stateRef.current.gs.phase;
+
+    if (p === 'title') {
+      startGame();
+      return;
+    }
+    if (p === 'dead_health' || p === 'dead_stress') {
+      if (hitTest(cx, cy, GO_MENU_BTN)) goToTitle();
+      else startGame();
+      return;
+    }
+    if (p === 'playing' && hitTest(cx, cy, PAUSE_BTN)) {
+      togglePause();
+      return;
+    }
+    if (p === 'paused') {
+      if (hitTest(cx, cy, PAUSE_BTN) || hitTest(cx, cy, RESUME_BTN)) {
+        togglePause();
+      } else if (hitTest(cx, cy, MENU_BTN)) {
+        goToTitle();
+      }
+    }
+  }, [startGame, togglePause, goToTitle]);
+
   const handleDPadPress = useCallback((dir: DDir) => {
     stateRef.current.keys.add(dir);
     const p = stateRef.current.gs.phase;
@@ -379,6 +427,7 @@ export default function App() {
           width={CANVAS_W}
           height={CANVAS_H}
           onClick={handleClick}
+          onTouchEnd={isMobile ? handleCanvasTouch : undefined}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           className="block rounded-xl shadow-2xl cursor-pointer border border-blue-900"
@@ -388,23 +437,13 @@ export default function App() {
             touchAction: 'none',
           }}
         />
-        {isMobile && (
-          <div style={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            borderRadius: 12,
-            overflow: 'hidden',
-          }}>
-            <DPad onPress={handleDPadPress} onRelease={handleDPadRelease} />
-          </div>
-        )}
       </div>
       {!isMobile && (
         <p className="mt-2 text-gray-600 text-xs font-mono text-center">
           WASD / ARROW KEYS to move &nbsp;·&nbsp; Stand still near a couch to chill &nbsp;·&nbsp; ESC to pause
         </p>
       )}
+      {isMobile && <DPad onPress={handleDPadPress} onRelease={handleDPadRelease} />}
     </div>
   );
 }

@@ -398,3 +398,19 @@ export function stopMusic() {
   _currentTrack = 'none';
   _fadingOut = [];
 }
+
+// Mobile browsers block audio until the first user gesture. Call once on first
+// touch to pre-load all tracks and resume the AudioContext so the game loop can
+// start music immediately without further interaction.
+export function unlockAudio() {
+  if (_ctx && _ctx.state === 'suspended') _ctx.resume();
+  for (const key of Object.keys(MUSIC_URLS) as Exclude<MusicTrack, 'none'>[]) {
+    const el = _getAudio(key);
+    el.muted = true;
+    el.play().then(() => {
+      el.pause();
+      el.muted = false;
+      el.currentTime = 0;
+    }).catch(() => {/* still blocked — next gesture will retry */});
+  }
+}

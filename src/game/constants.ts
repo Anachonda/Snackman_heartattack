@@ -43,7 +43,7 @@ export const RELAX_DURATION      = 180;
 export const SPAWN_INTERVAL_FOOD  = 160;
 export const SPAWN_INTERVAL_ENEMY = 400;
 export const MAX_FOODS   = 12;
-export const MAX_ENEMIES = 6;
+export const MAX_ENEMIES = 3;  // level 1 baseline; levels 2+ add via LEVEL_MAX_ENEMIES_BONUS
 
 export const HEALTHY_FOODS   = ['salmon', 'broccoli', 'nuts'] as const;
 export const UNHEALTHY_FOODS = ['donut', 'fries', 'cigarette'] as const;
@@ -84,9 +84,14 @@ export const HEALTHY_GOAL        = 10;   // healthy foods needed per level
 export const LEVEL_COMPLETE_FREEZE = 150; // frames to freeze on level complete
 
 // Per-level scaling (applied each new level)
-export const LEVEL_ENEMY_SPEED_BONUS = 0.12;  // added to base enemy speed per level
-export const LEVEL_STRESS_GAIN_BONUS = 2;     // added to all stress-hit values per level
-export const LEVEL_MAX_ENEMIES_BONUS = 1;     // one extra max enemy per level (capped at 10)
+export const LEVEL_ENEMY_SPEED_BONUS  = 0.18;  // added to base enemy speed per level
+export const LEVEL_STRESS_GAIN_BONUS  = 2;     // added to all stress-hit values per level
+export const LEVEL_MAX_ENEMIES_BONUS  = 1;     // one extra max enemy per level: L1=3, L2=4, L3=5…
+// AI aggression per level: trackWeight and noise factors are adjusted in engine
+export const LEVEL_TRACK_WEIGHT_BASE  = 0.10;  // level 1 player-tracking blend weight
+export const LEVEL_TRACK_WEIGHT_BONUS = 0.06;  // added per level (L1=0.10, L2=0.16, L3=0.22…)
+export const LEVEL_NOISE_BASE         = 0.30;  // level 1 random wander noise
+export const LEVEL_NOISE_BONUS        = 0.08;  // subtracted per level (less random = smarter)
 
 // Maze grid: 1 = wall, 0 = path
 // 20 cols × 15 rows

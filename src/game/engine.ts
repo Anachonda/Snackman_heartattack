@@ -19,6 +19,8 @@ import {
   PERM_SPEED_PER_HEALTHY, PERM_SPEED_MAX,
   SUGAR_SLOW_MULT, SUGAR_SLOW_DURATION,
   CIGARETTE_HEALTH_LOSS, CIGARETTE_STRESS_DELAY, CIGARETTE_STRESS_AMOUNT,
+  LEVEL_TRACK_WEIGHT_BASE, LEVEL_TRACK_WEIGHT_BONUS,
+  LEVEL_NOISE_BASE, LEVEL_NOISE_BONUS,
 } from './constants';
 import { spawnParticle, tileCenter, isWall, uid } from './renderer';
 
@@ -142,8 +144,8 @@ function _buildState(
   for (let i = 0; i < MIN_HEALTHY_ON_SCREEN; i++) _spawnFood(entities, true);
   for (let i = 0; i < 3; i++) _spawnFood(entities);
 
-  // Enemies — one per enemy type to start, then extras based on level
-  const startingEnemyCount = Math.min(maxEnemiesForLevel(level), ENEMIES.length + (level - 1));
+  // Spawn exactly the level's max enemy count, one of each type then cycle
+  const startingEnemyCount = maxEnemiesForLevel(level);
   for (let i = 0; i < startingEnemyCount; i++) {
     const kind = ENEMIES[i % ENEMIES.length] as EntityKind;
     _spawnEnemy(entities, kind, level);
@@ -197,18 +199,32 @@ const HEALTHY_FOOD_SET   = new Set<string>(HEALTHY_FOODS);
 
 const CHAIR_POSITIONS: Vec2[] = CHAIR_TILES.map(([col, row]) => tileCenter(col, row));
 
+// Minimum distance an unhealthy item must keep from any healthy item
+const UNHEALTHY_HEALTHY_CLEARANCE = 80;
+
 function _isClearForFood(pos: Vec2, kind: EntityKind, existing: Entity[]): boolean {
-  // Check overlap with existing food (healthy and unhealthy must not overlap each other)
   for (const e of existing) {
     if (!e.active) continue;
     if (HEALTHY_FOOD_SET.has(e.kind) || UNHEALTHY_FOOD_SET.has(e.kind)) {
       if (dist(pos, e.pos) < FOOD_MIN_SEPARATION) return false;
     }
   }
-  // Unhealthy food must not spawn on/near chairs
-  if (UNHEALTHY_FOOD_SET.has(kind)) {
+  // Unhealthy food must not spawn near chairs
+  if (UNHEALTHY_FOOD_SET.has(kind) || kind === 'cigarette') {
     for (const cp of CHAIR_POSITIONS) {
       if (dist(pos, cp) < FOOD_CHAIR_CLEARANCE) return false;
+    }
+    // Unhealthy food must not cluster around healthy food (keeps a safe corridor to healthy items)
+    for (const e of existing) {
+      if (!e.active) continue;
+      if (HEALTHY_FOOD_SET.has(e.kind) && dist(pos, e.pos) < UNHEALTHY_HEALTHY_CLEARANCE) return false;
+    }
+  }
+  // Healthy food must not spawn next to unhealthy food (so healthy is always accessible without touching bad items)
+  if (HEALTHY_FOOD_SET.has(kind)) {
+    for (const e of existing) {
+      if (!e.active) continue;
+      if ((UNHEALTHY_FOOD_SET.has(e.kind) || e.kind === 'cigarette') && dist(pos, e.pos) < UNHEALTHY_HEALTHY_CLEARANCE) return false;
     }
   }
   return true;
@@ -383,9 +399,13 @@ export function tickEngine(state: EngineState): void {
       y: state.player.y - e.pos.y,
     });
 
-    // Ghost is much more aggressive in tracking the player
-    const trackWeight = e.kind === 'deadline_ghost' ? 0.22 : 0.12;
-    const noise       = e.kind === 'deadline_ghost' ? 0.10 : 0.25;
+    // Aggression scales with level: higher trackWeight = smarter, lower noise = less random
+    const lvl = state.level - 1; // 0-indexed offset
+    const baseTrack = LEVEL_TRACK_WEIGHT_BASE + lvl * LEVEL_TRACK_WEIGHT_BONUS;
+    const baseNoise = Math.max(0.04, LEVEL_NOISE_BASE - lvl * LEVEL_NOISE_BONUS);
+    // Ghost is always more aggressive than other enemies
+    const trackWeight = e.kind === 'deadline_ghost' ? baseTrack * 1.6 : baseTrack;
+    const noise       = e.kind === 'deadline_ghost' ? baseNoise * 0.5 : baseNoise;
     e.vel.x = e.vel.x * (1 - trackWeight) + toPlayer.x * eSpeed * trackWeight + (Math.random() - 0.5) * noise;
     e.vel.y = e.vel.y * (1 - trackWeight) + toPlayer.y * eSpeed * trackWeight + (Math.random() - 0.5) * noise;
 

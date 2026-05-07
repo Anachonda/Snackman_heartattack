@@ -309,7 +309,11 @@ export function playRelax() {
   osc(ctx, 'sine', 494, gain(ctx, 0.06), 0.1, 0.5);
 }
 
-// ── Music Manager ─────────────────────────────────────────────────────────────
+// ── Music Manager (Web Audio API — works on mobile) ───────────────────────────
+//
+// HTMLAudioElement.play() called from requestAnimationFrame is always blocked
+// by mobile browsers. Web Audio API BufferSourceNodes can be started freely
+// once the AudioContext has been created inside a user-gesture handler.
 
 type MusicTrack = 'snackman' | 'stressman' | 'fatman' | 'none';
 
@@ -319,98 +323,145 @@ const MUSIC_URLS: Record<Exclude<MusicTrack, 'none'>, string> = {
   fatman:    'https://raw.githubusercontent.com/Anachonda/Snackman-game/main/public/audio/Fatman.mp3',
 };
 
-const FADE_STEP = 0.016;   // volume change per ~16ms tick (~1 step per frame)
-const MUSIC_VOL = 0.55;    // target volume when fully faded in
+const MUSIC_VOL = 0.55;
+const FADE_STEP = 0.016;  // gain change per ~16ms frame
 
-const _audio: Partial<Record<Exclude<MusicTrack, 'none'>, HTMLAudioElement>> = {};
+// Decoded audio buffers — populated by unlockAudio()
+const _buffers: Partial<Record<Exclude<MusicTrack, 'none'>, AudioBuffer>> = {};
+
+// Per-track gain nodes (created once the AudioContext exists)
+const _gainNodes: Partial<Record<Exclude<MusicTrack, 'none'>, GainNode>> = {};
+
+// Currently playing source nodes
+const _sources: Partial<Record<Exclude<MusicTrack, 'none'>, AudioBufferSourceNode>> = {};
+
+// Tracks whose gain nodes are fading out (already stopped as a "current" track)
+const _fadingOut: Array<{ gain: GainNode; vol: number }> = [];
+
 let _currentTrack: MusicTrack = 'none';
-let _fadingOut: Array<{ el: HTMLAudioElement; vol: number }> = [];
 
-function _getAudio(track: Exclude<MusicTrack, 'none'>): HTMLAudioElement {
-  if (!_audio[track]) {
-    const el = new Audio(MUSIC_URLS[track]);
-    el.loop = true;
-    el.volume = 0;
-    el.preload = 'auto';
-    _audio[track] = el;
-  }
-  return _audio[track]!;
+function _musicAc(): AudioContext | null {
+  // Reuse the shared AudioContext if it exists, but never create one here —
+  // that must happen inside a user gesture (unlockAudio).
+  return _ctx;
 }
 
-// Call once per frame from the game loop. Determines which track should play
-// based on game state, then crossfades smoothly.
-export function updateMusic(phase: string, health: number, stress: number) {
-  // Determine desired track
-  let desired: MusicTrack = 'none';
-  if (phase === 'playing' || phase === 'paused') {
-    if (health < 50) {
-      desired = 'fatman';
-    } else if (stress >= 50) {
-      desired = 'stressman';
-    } else {
-      desired = 'snackman';
-    }
+function _getGain(track: Exclude<MusicTrack, 'none'>): GainNode | null {
+  const ctx = _musicAc();
+  if (!ctx) return null;
+  if (!_gainNodes[track]) {
+    const g = ctx.createGain();
+    g.gain.value = 0;
+    g.connect(ctx.destination);
+    _gainNodes[track] = g;
+  }
+  return _gainNodes[track]!;
+}
+
+function _startSource(track: Exclude<MusicTrack, 'none'>): void {
+  const ctx = _musicAc();
+  const buf = _buffers[track];
+  const gainNode = _getGain(track);
+  if (!ctx || !buf || !gainNode) return;
+
+  // Stop any existing source for this track
+  const existing = _sources[track];
+  if (existing) {
+    try { existing.stop(); } catch { /* already stopped */ }
+    existing.disconnect();
   }
 
-  // Switch track if needed
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.loop = true;
+  src.connect(gainNode);
+  src.start();
+  _sources[track] = src;
+}
+
+function _stopSource(track: Exclude<MusicTrack, 'none'>): void {
+  const src = _sources[track];
+  if (src) {
+    try { src.stop(); } catch { /* already stopped */ }
+    src.disconnect();
+    delete _sources[track];
+  }
+}
+
+// Call once per frame from the game loop.
+export function updateMusic(phase: string, health: number, stress: number) {
+  let desired: MusicTrack = 'none';
+  if (phase === 'playing' || phase === 'paused') {
+    if (health < 50)      desired = 'fatman';
+    else if (stress >= 50) desired = 'stressman';
+    else                   desired = 'snackman';
+  }
+
   if (desired !== _currentTrack) {
-    // Fade out current
+    // Move current track to fade-out list
     if (_currentTrack !== 'none') {
-      const old = _getAudio(_currentTrack);
-      _fadingOut.push({ el: old, vol: old.volume });
+      const g = _gainNodes[_currentTrack];
+      if (g) {
+        _fadingOut.push({ gain: g, vol: g.gain.value });
+        // Detach from the gain map so a fresh one is made if this track resumes
+        delete _gainNodes[_currentTrack];
+      }
+      _stopSource(_currentTrack);
     }
     _currentTrack = desired;
-    // Start new track from current position (or beginning)
     if (desired !== 'none') {
-      const el = _getAudio(desired);
-      el.volume = 0;
-      el.play().catch(() => {/* autoplay blocked — will retry on next interaction */});
+      _startSource(desired);
     }
   }
 
   // Fade in current track
   if (_currentTrack !== 'none') {
-    const el = _getAudio(_currentTrack);
-    if (phase === 'paused') {
-      // Gently duck music while paused
-      el.volume = Math.max(0.12, el.volume - FADE_STEP * 0.5);
-    } else {
-      el.volume = Math.min(MUSIC_VOL, el.volume + FADE_STEP);
+    const g = _getGain(_currentTrack);
+    if (g) {
+      const target = phase === 'paused' ? 0.12 : MUSIC_VOL;
+      const step   = phase === 'paused' ? FADE_STEP * 0.5 : FADE_STEP;
+      const cur    = g.gain.value;
+      g.gain.value = cur < target
+        ? Math.min(target, cur + step)
+        : Math.max(target, cur - step);
     }
   }
 
-  // Fade out old tracks
-  _fadingOut = _fadingOut.filter(({ el }) => {
-    el.volume = Math.max(0, el.volume - FADE_STEP * 1.5);
-    if (el.volume <= 0) {
-      el.pause();
-      return false;
+  // Fade out old tracks and stop them when silent
+  for (let i = _fadingOut.length - 1; i >= 0; i--) {
+    const item = _fadingOut[i];
+    item.vol = Math.max(0, item.vol - FADE_STEP * 1.5);
+    item.gain.gain.value = item.vol;
+    if (item.vol <= 0) {
+      _fadingOut.splice(i, 1);
     }
-    return true;
-  });
+  }
 }
 
 export function stopMusic() {
-  for (const track of Object.keys(_audio) as Exclude<MusicTrack, 'none'>[]) {
-    const el = _audio[track];
-    if (el) { el.pause(); el.volume = 0; }
+  for (const track of Object.keys(MUSIC_URLS) as Exclude<MusicTrack, 'none'>[]) {
+    _stopSource(track);
+    const g = _gainNodes[track];
+    if (g) { g.gain.value = 0; delete _gainNodes[track]; }
   }
+  _fadingOut.length = 0;
   _currentTrack = 'none';
-  _fadingOut = [];
 }
 
-// Mobile browsers block audio until the first user gesture. Call once on first
-// touch to pre-load all tracks and resume the AudioContext so the game loop can
-// start music immediately without further interaction.
+// Call once on first user touch. Creates/resumes the AudioContext and fetches +
+// decodes all music tracks so they are ready to play immediately from the game
+// loop without any further user-gesture requirement.
 export function unlockAudio() {
-  if (_ctx && _ctx.state === 'suspended') _ctx.resume();
+  // Ensure AudioContext exists and is running
+  const ctx = ac();  // creates _ctx if needed, resumes if suspended
+
+  // Fetch and decode each track in parallel
   for (const key of Object.keys(MUSIC_URLS) as Exclude<MusicTrack, 'none'>[]) {
-    const el = _getAudio(key);
-    el.muted = true;
-    el.play().then(() => {
-      el.pause();
-      el.muted = false;
-      el.currentTime = 0;
-    }).catch(() => {/* still blocked — next gesture will retry */});
+    if (_buffers[key]) continue; // already loaded
+    fetch(MUSIC_URLS[key])
+      .then(r => r.arrayBuffer())
+      .then(ab => ctx.decodeAudioData(ab))
+      .then(buf => { _buffers[key] = buf; })
+      .catch(() => {/* network error — music stays silent */});
   }
 }

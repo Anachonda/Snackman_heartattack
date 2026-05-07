@@ -322,6 +322,15 @@ const MUSIC_URLS: Record<Exclude<MusicTrack, 'none'>, string> = {
 const FADE_STEP = 0.016;   // volume change per ~16ms tick (~1 step per frame)
 const MUSIC_VOL = 0.55;    // target volume when fully faded in
 
+let _musicEnabled = true;
+
+export function getMusicEnabled(): boolean { return _musicEnabled; }
+
+export function setMusicEnabled(on: boolean): void {
+  _musicEnabled = on;
+  if (!on) stopMusic();
+}
+
 const _audio: Partial<Record<Exclude<MusicTrack, 'none'>, HTMLAudioElement>> = {};
 let _currentTrack: MusicTrack = 'none';
 let _fadingOut: Array<{ el: HTMLAudioElement; vol: number }> = [];
@@ -340,6 +349,7 @@ function _getAudio(track: Exclude<MusicTrack, 'none'>): HTMLAudioElement {
 // Call once per frame from the game loop. Determines which track should play
 // based on game state, then crossfades smoothly.
 export function updateMusic(phase: string, health: number, stress: number) {
+  if (!_musicEnabled) return;
   // Determine desired track
   let desired: MusicTrack = 'none';
   if (phase === 'playing' || phase === 'paused') {

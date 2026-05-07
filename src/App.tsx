@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
+import { Volume2, VolumeX } from 'lucide-react';
 import { CANVAS_W, CANVAS_H, ENEMIES } from './game/constants';
 import { createInitialState, tickEngine, advanceLevel, EngineState } from './game/engine';
 import {
@@ -7,6 +8,7 @@ import {
   playLevelComplete, playHeartAttack, playBurnout,
   playRelax, playTiredPuff, playFootstep, playStressManWarning,
   updateMusic, stopMusic, unlockAudio,
+  getMusicEnabled, setMusicEnabled,
 } from './game/sounds';
 import {
   drawMaze,
@@ -144,9 +146,21 @@ export default function App() {
   const canvasRef   = useRef<HTMLCanvasElement>(null);
   const stateRef    = useRef<EngineState>(createInitialState());
   const rafRef      = useRef<number>(0);
-  const frameRef    = useRef(0);
-  const mouseRef    = useRef<{ x: number; y: number }>({ x: -1, y: -1 });
-  const [isMobile]  = useState(() => isMobileDevice());
+  const frameRef     = useRef(0);
+  const mouseRef     = useRef<{ x: number; y: number }>({ x: -1, y: -1 });
+  const lastPhaseRef = useRef<string>('title');
+  const [isMobile]   = useState(() => isMobileDevice());
+  const [musicOn, setMusicOn] = useState(true);
+  const [phase, setPhase] = useState<string>('title');
+
+  const toggleMusic = useCallback(() => {
+    const next = !getMusicEnabled();
+    setMusicEnabled(next);
+    setMusicOn(next);
+    // On mobile this call happens inside a click handler — that's the user
+    // gesture that unlocks HTMLAudioElement autoplay for the session.
+    if (next) unlockAudio();
+  }, []);
 
   const startGame = useCallback(() => {
     stateRef.current = createInitialState();
@@ -218,6 +232,12 @@ export default function App() {
 
       // ── Render ──────────────────────────────────────────────────────────────
       ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+
+      // Sync phase to React state for overlay UI (throttled via ref)
+      if (s.gs.phase !== lastPhaseRef.current) {
+        lastPhaseRef.current = s.gs.phase;
+        setPhase(s.gs.phase);
+      }
 
       const { x: mx, y: my } = mouseRef.current;
 
@@ -437,6 +457,22 @@ export default function App() {
             touchAction: 'none',
           }}
         />
+        {phase === 'title' && (
+          <button
+            onClick={e => { e.stopPropagation(); toggleMusic(); }}
+            onTouchEnd={e => { e.stopPropagation(); toggleMusic(); }}
+            style={{ position: 'absolute', bottom: '4%', right: '3%' }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold
+              transition-all duration-150 select-none
+              ${musicOn
+                ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+              }`}
+          >
+            {musicOn ? <Volume2 size={15} /> : <VolumeX size={15} />}
+            {musicOn ? 'Music ON' : 'Music OFF'}
+          </button>
+        )}
       </div>
       {!isMobile && (
         <p className="mt-2 text-gray-600 text-xs font-mono text-center">

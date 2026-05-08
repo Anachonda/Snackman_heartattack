@@ -370,11 +370,15 @@ export function updateMusic(phase: string, health: number, stress: number) {
       _fadingOut.push({ el: old, vol: old.volume });
     }
     _currentTrack = desired;
-    // Start new track from current position (or beginning)
+    // Start new track — if it was fading out, rescue it from _fadingOut first
     if (desired !== 'none') {
       const el = _getAudio(desired);
-      el.volume = 0;
-      el.play().catch(() => {/* autoplay blocked */});
+      _fadingOut = _fadingOut.filter(f => f.el !== el);
+      if (el.paused) {
+        el.volume = 0;
+        el.play().catch(() => {/* autoplay blocked */});
+      }
+      // if not paused (never fully faded yet), just let the fade-in below take over
     }
   }
 

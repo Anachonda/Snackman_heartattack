@@ -7,7 +7,7 @@ import {
   playGhostHit, playEmailHit, playBlobHit,
   playLevelComplete, playHeartAttack, playBurnout,
   playRelax, playTiredPuff, playFootstep, playStressManWarning,
-  updateMusic, stopMusic, unlockAudio,
+  updateMusic, stopMusic, unlockAudio, preloadSfx,
   getMusicEnabled, setMusicEnabled,
 } from './game/sounds';
 import {
@@ -190,10 +190,11 @@ export default function App() {
     setMusicOn(next);
     // On mobile this call happens inside a click handler — that's the user
     // gesture that unlocks HTMLAudioElement autoplay for the session.
-    if (next) unlockAudio();
+    if (next) { unlockAudio(); preloadSfx(); }
   }, []);
 
   const startGame = useCallback(() => {
+    preloadSfx();
     stateRef.current = createInitialState();
     stateRef.current.gs.phase = 'playing';
   }, []);

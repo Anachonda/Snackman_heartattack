@@ -1,4 +1,48 @@
-// Procedural sound engine — all sounds synthesized via Web Audio API, no files needed.
+// Sound engine — WAV files take priority; synthesizer is the fallback.
+
+// ── WAV loader ────────────────────────────────────────────────────────────────
+
+type SfxName =
+  | 'eat-good' | 'eat-bad'
+  | 'ghost-hit' | 'email-hit' | 'blob-hit'
+  | 'footstep' | 'footstep-boost'
+  | 'stress-warning' | 'tired-puff'
+  | 'level-complete' | 'heart-attack' | 'burnout' | 'relax';
+
+const _sfx: Partial<Record<SfxName, HTMLAudioElement | null>> = {};
+
+// Returns the preloaded audio element if the WAV file exists, otherwise null.
+function sfx(name: SfxName): HTMLAudioElement | null {
+  if (name in _sfx) return _sfx[name] ?? null;
+  // Mark as attempted so we don't keep retrying
+  _sfx[name] = null;
+  const el = new Audio(`/audio/sfx/${name}.wav`);
+  el.preload = 'auto';
+  el.addEventListener('canplaythrough', () => { _sfx[name] = el; }, { once: true });
+  el.addEventListener('error', () => { _sfx[name] = null; }, { once: true });
+  el.load();
+  return null;
+}
+
+// Plays a WAV sound effect if loaded, returns true. Otherwise returns false (use synth).
+function playSfx(name: SfxName, volume = 1): boolean {
+  const el = sfx(name);
+  if (!el) return false;
+  const clone = el.cloneNode() as HTMLAudioElement;
+  clone.volume = Math.min(1, Math.max(0, volume));
+  clone.play().catch(() => {/* autoplay blocked */});
+  return true;
+}
+
+// Preload all WAV files at startup so they're ready instantly
+export function preloadSfx() {
+  const names: SfxName[] = [
+    'eat-good', 'eat-bad', 'ghost-hit', 'email-hit', 'blob-hit',
+    'footstep', 'footstep-boost', 'stress-warning', 'tired-puff',
+    'level-complete', 'heart-attack', 'burnout', 'relax',
+  ];
+  names.forEach(sfx);
+}
 
 let _ctx: AudioContext | null = null;
 
@@ -51,22 +95,20 @@ function env(
 // ── Eating sounds ──────────────────────────────────────────────────────────────
 
 export function playGoodEat() {
+  if (playSfx('eat-good', 0.7)) return;
   const ctx = ac();
-  // Happy two-tone "nom nom" — rising sparkle
   const g = gain(ctx, 0.28);
   env(ctx, g, 0.008, 0.12, 1);
   osc(ctx, 'sine', 660, g, 0, 0.13);
   osc(ctx, 'sine', 880, g, 0.06, 0.13);
-
-  // Small high sparkle
   const g2 = gain(ctx, 0.14);
   env(ctx, g2, 0.005, 0.08, 1, 0.1);
   osc(ctx, 'triangle', 1320, g2, 0.1, 0.1);
 }
 
 export function playBadEat() {
+  if (playSfx('eat-bad', 0.7)) return;
   const ctx = ac();
-  // Descending gross splat — low "bllurgh"
   const g = gain(ctx, 0.35);
   const o = ctx.createOscillator();
   o.type = 'sawtooth';
@@ -96,8 +138,8 @@ export function playBadEat() {
 // ── Enemy sounds ──────────────────────────────────────────────────────────────
 
 export function playGhostHit() {
+  if (playSfx('ghost-hit', 0.7)) return;
   const ctx = ac();
-  // Eerie descending screech
   const g = gain(ctx, 0.22);
   const o = ctx.createOscillator();
   o.type = 'square';
@@ -121,8 +163,8 @@ export function playGhostHit() {
 }
 
 export function playEmailHit() {
+  if (playSfx('email-hit', 0.7)) return;
   const ctx = ac();
-  // Rapid notification-like "ding ding ding"
   for (let i = 0; i < 3; i++) {
     const g = gain(ctx, 0.18);
     env(ctx, g, 0.003, 0.1, 1, i * 0.07);
@@ -131,8 +173,8 @@ export function playEmailHit() {
 }
 
 export function playBlobHit() {
+  if (playSfx('blob-hit', 0.7)) return;
   const ctx = ac();
-  // Sloppy low "blorp"
   const g = gain(ctx, 0.3);
   const o = ctx.createOscillator();
   o.type = 'sine';
@@ -162,7 +204,7 @@ export function playFootstep(boosted: boolean) {
 
   const ctx = ac();
   if (boosted) {
-    // Fast whoosh tick
+    if (playSfx('footstep-boost', 0.4)) return;
     const buf = ctx.createBuffer(1, ctx.sampleRate * 0.04, ctx.sampleRate);
     const d = buf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) * 0.5;
@@ -175,7 +217,7 @@ export function playFootstep(boosted: boolean) {
     hp.connect(ctx.destination);
     src.start();
   } else {
-    // Soft footstep thud
+    if (playSfx('footstep', 0.3)) return;
     const buf = ctx.createBuffer(1, ctx.sampleRate * 0.06, ctx.sampleRate);
     const d = buf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.015));
@@ -200,6 +242,7 @@ export function playStressManWarning(stress: number) {
   if (now - _lastStressManWarn < 1400) return;
   _lastStressManWarn = now;
 
+  if (playSfx('stress-warning', 0.5)) return;
   const ctx = ac();
   const intensity = Math.max(0, (stress - 70) / 30);
   const freq = 200 + intensity * 300;
@@ -228,6 +271,7 @@ export function playTiredPuff(health: number) {
   if (now - _lastPuff < interval) return;
   _lastPuff = now;
 
+  if (playSfx('tired-puff', 0.4)) return;
   const ctx = ac();
   const buf = ctx.createBuffer(1, ctx.sampleRate * 0.18, ctx.sampleRate);
   const d = buf.getChannelData(0);
@@ -238,7 +282,7 @@ export function playTiredPuff(health: number) {
   src.buffer = buf;
   const bp = ctx.createBiquadFilter();
   bp.type = 'bandpass';
-  bp.frequency.value = 600 - health * 2; // lower pitch = more tired
+  bp.frequency.value = 600 - health * 2;
   bp.Q.value = 1.5;
   src.connect(bp);
   const g = gain(ctx, 0.14 + (1 - health / 100) * 0.18);
@@ -249,6 +293,7 @@ export function playTiredPuff(health: number) {
 // ── Game events ───────────────────────────────────────────────────────────────
 
 export function playLevelComplete() {
+  if (playSfx('level-complete', 0.8)) return;
   const ctx = ac();
   const now = ctx.currentTime;
   // Simple pling: sine wave, instant attack, long natural decay
@@ -265,8 +310,8 @@ export function playLevelComplete() {
 }
 
 export function playHeartAttack() {
+  if (playSfx('heart-attack', 0.8)) return;
   const ctx = ac();
-  // Short impact thud
   const g = gain(ctx, 0.4);
   const o = ctx.createOscillator();
   o.type = 'sawtooth';
@@ -285,8 +330,8 @@ export function playHeartAttack() {
 }
 
 export function playBurnout() {
+  if (playSfx('burnout', 0.7)) return;
   const ctx = ac();
-  // Short descending zap
   const g = gain(ctx, 0.28);
   const o = ctx.createOscillator();
   o.type = 'square';
@@ -300,8 +345,8 @@ export function playBurnout() {
 }
 
 export function playRelax() {
+  if (playSfx('relax', 0.6)) return;
   const ctx = ac();
-  // Gentle wind-down chord
   const g = gain(ctx, 0.12);
   env(ctx, g, 0.05, 0.5, 1);
   osc(ctx, 'sine', 330, g, 0, 0.6);

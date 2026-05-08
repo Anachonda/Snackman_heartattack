@@ -1,0 +1,18 @@
+Drop your WAV files here. Each filename maps to a game event:
+
+  eat-good.wav        — Eating healthy food (fruit, salad, etc.)
+  eat-bad.wav         — Eating unhealthy food (burger, fries, etc.)
+  ghost-hit.wav       — Hit by a stress ghost
+  email-hit.wav       — Hit by an email enemy
+  blob-hit.wav        — Hit by a blob enemy
+  footstep.wav        — Normal footstep
+  footstep-boost.wav  — Fast/boosted footstep
+  stress-warning.wav  — Stress man nearby warning
+  tired-puff.wav      — Wheezy sound when health is low
+  level-complete.wav  — Level finished
+  heart-attack.wav    — Game over / heart attack
+  burnout.wav         — Burnout state sound
+  relax.wav           — Relaxing / stress going down
+
+Files not present = game falls back to the built-in synthesizer sound.
+WAV format recommended. Files are loaded and cached on first use.

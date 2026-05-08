@@ -48,7 +48,7 @@ function isMobileDevice() {
     (navigator.maxTouchPoints > 0 && window.innerWidth <= 1024);
 }
 
-// ── D-pad component ───────────────────────────────────────────────────────────
+// ── Joystick D-pad component ──────────────────────────────────────────────────
 
 type DDir = 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight';
 
@@ -57,86 +57,117 @@ interface DPadProps {
   onRelease: (dir: DDir) => void;
 }
 
-function DPad({ onPress, onRelease }: DPadProps) {
-  const activeRef = useRef<Set<DDir>>(new Set());
+const JOYSTICK_R = 72; // radius of the entire disc
+const DEAD_ZONE  = 0.28; // fraction of radius — inner dead zone
 
-  function handleTouch(e: React.TouchEvent, dir: DDir, isStart: boolean) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (isStart) {
-      if (!activeRef.current.has(dir)) {
-        activeRef.current.add(dir);
-        onPress(dir);
-      }
-    } else {
-      if (activeRef.current.has(dir)) {
-        activeRef.current.delete(dir);
-        onRelease(dir);
-      }
+function dirFromAngle(dx: number, dy: number): DDir | null {
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist < JOYSTICK_R * DEAD_ZONE) return null;
+  const angle = Math.atan2(dy, dx); // -π .. π, 0 = right
+  const deg = ((angle * 180) / Math.PI + 360) % 360;
+  if (deg >= 315 || deg < 45)  return 'ArrowRight';
+  if (deg >= 45  && deg < 135) return 'ArrowDown';
+  if (deg >= 135 && deg < 225) return 'ArrowLeft';
+  return 'ArrowUp';
+}
+
+function DPad({ onPress, onRelease }: DPadProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const activeDir    = useRef<DDir | null>(null);
+
+  function updateDir(touch: React.Touch | Touch) {
+    const el = containerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const cx   = rect.left + rect.width  / 2;
+    const cy   = rect.top  + rect.height / 2;
+    const dir  = dirFromAngle(touch.clientX - cx, touch.clientY - cy);
+
+    if (dir !== activeDir.current) {
+      if (activeDir.current) onRelease(activeDir.current);
+      activeDir.current = dir;
+      if (dir) onPress(dir);
     }
   }
 
-  function btn(dir: DDir, label: string, style: React.CSSProperties) {
-    return (
-      <div
-        key={dir}
-        onTouchStart={e => handleTouch(e, dir, true)}
-        onTouchEnd={e => handleTouch(e, dir, false)}
-        onTouchCancel={e => handleTouch(e, dir, false)}
-        style={{
-          position: 'absolute',
-          width: 40,
-          height: 40,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'rgba(30, 80, 180, 0.45)',
-          border: '2px solid rgba(96, 165, 250, 0.7)',
-          borderRadius: 8,
-          color: 'rgba(186, 220, 255, 0.92)',
-          fontSize: 17,
-          fontFamily: 'monospace',
-          fontWeight: 'bold',
-          userSelect: 'none',
-          WebkitUserSelect: 'none',
-          touchAction: 'none',
-          boxShadow: '0 2px 10px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12)',
-          cursor: 'pointer',
-          ...style,
-        }}
-      >
-        {label}
-      </div>
-    );
+  function handleTouchStart(e: React.TouchEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    updateDir(e.changedTouches[0]);
   }
 
-  const S = 40;  // button size
-  const G = 5;   // gap
-  const pad = S + G;
+  function handleTouchMove(e: React.TouchEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    updateDir(e.changedTouches[0]);
+  }
+
+  function handleTouchEnd(e: React.TouchEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (activeDir.current) {
+      onRelease(activeDir.current);
+      activeDir.current = null;
+    }
+  }
+
+  const D = JOYSTICK_R * 2;
+  // Arrow triangle size / offset from edge
+  const arrowInset = 14;
 
   return (
     <div
+      ref={containerRef}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
       style={{
         position: 'fixed',
-        bottom: 'max(12px, env(safe-area-inset-bottom, 12px))',
-        left: 'max(12px, env(safe-area-inset-left, 12px))',
-        width: pad * 3 - G,
-        height: pad * 3 - G,
+        bottom: `max(18px, env(safe-area-inset-bottom, 18px))`,
+        left: `max(18px, env(safe-area-inset-left, 18px))`,
+        width: D,
+        height: D,
+        borderRadius: '50%',
+        background: 'rgba(20, 30, 60, 0.55)',
+        border: '2px solid rgba(140, 170, 255, 0.35)',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.45)',
         pointerEvents: 'auto',
         touchAction: 'none',
         zIndex: 100,
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
       }}
     >
-      {btn('ArrowUp',    '▲', { left: pad,     top: 0 })}
-      {btn('ArrowLeft',  '◀', { left: 0,       top: pad })}
-      {btn('ArrowDown',  '▼', { left: pad,     top: pad * 2 })}
-      {btn('ArrowRight', '▶', { left: pad * 2, top: pad })}
-      {/* centre dead-zone */}
+      {/* Up arrow */}
+      <svg style={{ position: 'absolute', top: arrowInset, left: '50%', transform: 'translateX(-50%)' }}
+        width={22} height={18} viewBox="0 0 22 18">
+        <polygon points="11,0 22,18 0,18" fill="rgba(180,210,255,0.65)" />
+      </svg>
+      {/* Down arrow */}
+      <svg style={{ position: 'absolute', bottom: arrowInset, left: '50%', transform: 'translateX(-50%)' }}
+        width={22} height={18} viewBox="0 0 22 18">
+        <polygon points="11,18 22,0 0,0" fill="rgba(180,210,255,0.65)" />
+      </svg>
+      {/* Left arrow */}
+      <svg style={{ position: 'absolute', left: arrowInset, top: '50%', transform: 'translateY(-50%)' }}
+        width={18} height={22} viewBox="0 0 18 22">
+        <polygon points="0,11 18,0 18,22" fill="rgba(180,210,255,0.65)" />
+      </svg>
+      {/* Right arrow */}
+      <svg style={{ position: 'absolute', right: arrowInset, top: '50%', transform: 'translateY(-50%)' }}
+        width={18} height={22} viewBox="0 0 18 22">
+        <polygon points="18,11 0,0 0,22" fill="rgba(180,210,255,0.65)" />
+      </svg>
+      {/* Centre dot */}
       <div style={{
-        position: 'absolute', left: pad, top: pad, width: S, height: S,
-        background: 'rgba(15, 30, 70, 0.55)',
-        border: '2px solid rgba(96,165,250,0.3)',
-        borderRadius: 8,
+        position: 'absolute',
+        top: '50%', left: '50%',
+        transform: 'translate(-50%,-50%)',
+        width: 18, height: 18,
+        borderRadius: '50%',
+        background: 'rgba(140,170,255,0.25)',
+        border: '1.5px solid rgba(140,170,255,0.4)',
       }} />
     </div>
   );
@@ -440,7 +471,7 @@ export default function App() {
   }, [isMobile]);
 
   return (
-    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center select-none p-2">
+    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center select-none p-2" style={{ touchAction: 'manipulation' }}>
       <div style={{ position: 'relative', display: 'inline-block' }}>
         <canvas
           ref={canvasRef}

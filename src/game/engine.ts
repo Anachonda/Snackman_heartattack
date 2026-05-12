@@ -483,7 +483,7 @@ export function tickEngine(state: EngineState): void {
           gs.phase = 'level_complete';
           gs.levelCompleteTimer = LEVEL_COMPLETE_FREEZE;
           spawnParticle(state.particles, state.player, 'LEVEL COMPLETE!', '#facc15');
-          // level_complete sound intentionally omitted
+          state.soundEvents.push('level_complete');
         }
       } else if (e.kind === 'cigarette') {
         // Cigarette: heavy health loss now + delayed stress spike later

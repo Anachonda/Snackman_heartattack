@@ -11,12 +11,19 @@ type SfxName =
 
 const _sfx: Partial<Record<SfxName, HTMLAudioElement | null>> = {};
 
+const SFX_URL_OVERRIDES: Partial<Record<SfxName, string>> = {
+  'heart-attack': '/audio/sfx/Death.wav',
+  'burnout':      '/audio/sfx/Death.wav',
+  'level-complete': '/audio/sfx/Level-complete.wav',
+};
+
 // Returns the preloaded audio element if the WAV file exists, otherwise null.
 function sfx(name: SfxName): HTMLAudioElement | null {
   if (name in _sfx) return _sfx[name] ?? null;
   // Mark as attempted so we don't keep retrying
   _sfx[name] = null;
-  const el = new Audio(`/audio/sfx/${name}.wav`);
+  const url = SFX_URL_OVERRIDES[name] ?? `/audio/sfx/${name}.wav`;
+  const el = new Audio(url);
   el.preload = 'auto';
   el.addEventListener('canplaythrough', () => { _sfx[name] = el; }, { once: true });
   el.addEventListener('error', () => { _sfx[name] = null; }, { once: true });

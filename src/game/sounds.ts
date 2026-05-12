@@ -364,7 +364,7 @@ const SNACKMAN_URL = 'https://raw.githubusercontent.com/Anachonda/Snackman-game/
 
 const MUSIC_VOL   = 0.55;
 const FADE_STEP   = 0.016;
-const RATE_MIN    = 0.80;
+const RATE_MIN    = 0.90;
 const RATE_MAX    = 1.50;
 const RATE_SMOOTH = 0.015; // max rate change per frame (~16ms)
 

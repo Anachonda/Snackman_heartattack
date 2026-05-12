@@ -34,7 +34,8 @@ function sfx(name: SfxName): HTMLAudioElement | null {
 // Plays a WAV sound effect, returns true on success. Otherwise returns false (use synth).
 function playSfx(name: SfxName, volume = 1): boolean {
   const el = sfx(name);
-  if (!el) return false;
+  // readyState < 2 means the browser hasn't buffered enough to play yet — fall back to synth
+  if (!el || el.readyState < 2) return false;
   const clone = el.cloneNode() as HTMLAudioElement;
   clone.volume = Math.min(1, Math.max(0, volume));
   clone.play().catch(() => {/* autoplay blocked */});

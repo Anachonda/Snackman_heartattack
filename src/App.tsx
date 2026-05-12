@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
+import GameOverOverlay from './GameOverOverlay';
 import { CANVAS_W, CANVAS_H, ENEMIES } from './game/constants';
 import { createInitialState, tickEngine, advanceLevel, EngineState } from './game/engine';
 import {
@@ -18,7 +19,6 @@ import {
   drawParticles,
   drawHUD,
   drawTitleScreen,
-  drawGameOver,
   drawLevelComplete,
   drawStressMan,
   drawPauseScreen,
@@ -30,11 +30,6 @@ const PAUSE_BTN  = { x: CANVAS_W - 48, y: 8, w: 38, h: 26 };
 const RESUME_BTN = { x: (CANVAS_W - 280) / 2, y: (CANVAS_H - 240) / 2 + 110, w: 280, h: 48 };
 const MENU_BTN   = { x: (CANVAS_W - 280) / 2, y: (CANVAS_H - 240) / 2 + 170, w: 280, h: 48 };
 
-// Game-over screen button regions
-const _GO_BW = 220, _GO_BH = 46, _GO_GAP = 20;
-const _GO_TOTAL_W = _GO_BW * 2 + _GO_GAP;
-const GO_RETRY_BTN = { x: (CANVAS_W - _GO_TOTAL_W) / 2,                    y: 455, w: _GO_BW, h: _GO_BH };
-const GO_MENU_BTN  = { x: (CANVAS_W - _GO_TOTAL_W) / 2 + _GO_BW + _GO_GAP, y: 455, w: _GO_BW, h: _GO_BH };
 
 function hitTest(x: number, y: number, r: typeof PAUSE_BTN) {
   return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
@@ -183,6 +178,7 @@ export default function App() {
   const [isMobile]   = useState(() => isMobileDevice());
   const [musicOn, setMusicOn] = useState(true);
   const [phase, setPhase] = useState<string>('title');
+  const [gameOverGs, setGameOverGs] = useState<import('./game/types').GameState | null>(null);
 
   const toggleMusic = useCallback(() => {
     const next = !getMusicEnabled();
@@ -197,11 +193,13 @@ export default function App() {
     preloadSfx();
     stateRef.current = createInitialState();
     stateRef.current.gs.phase = 'playing';
+    setGameOverGs(null);
   }, []);
 
   const goToTitle = useCallback(() => {
     stopMusic();
     stateRef.current = createInitialState();
+    setGameOverGs(null);
     // phase stays 'title'
   }, []);
 
@@ -269,6 +267,9 @@ export default function App() {
       if (s.gs.phase !== lastPhaseRef.current) {
         lastPhaseRef.current = s.gs.phase;
         setPhase(s.gs.phase);
+        if (s.gs.phase === 'dead_health' || s.gs.phase === 'dead_stress') {
+          setGameOverGs({ ...s.gs });
+        }
       }
 
       const { x: mx, y: my } = mouseRef.current;
@@ -298,8 +299,6 @@ export default function App() {
 
         if (s.gs.phase === 'level_complete') {
           drawLevelComplete(ctx, s.gs.level, s.gs.score, frameRef.current);
-        } else if (s.gs.phase === 'dead_health' || s.gs.phase === 'dead_stress') {
-          drawGameOver(ctx, s.gs.phase, s.gs.score, frameRef.current);
         } else if (s.gs.phase === 'paused') {
           const hovered = hitTest(mx, my, RESUME_BTN) ? 'resume'
                         : hitTest(mx, my, MENU_BTN)   ? 'menu'
@@ -326,7 +325,7 @@ export default function App() {
         }
         if (e.key === 'Enter') {
           const p = state.gs.phase;
-          if (p === 'title' || p === 'dead_health' || p === 'dead_stress') startGame();
+          if (p === 'title') startGame();
           else if (p === 'paused') togglePause();
           return;
         }
@@ -389,14 +388,7 @@ export default function App() {
       startGame();
       return;
     }
-    if (p === 'dead_health' || p === 'dead_stress') {
-      if (hitTest(cx, cy, GO_MENU_BTN)) {
-        goToTitle();
-      } else {
-        startGame();
-      }
-      return;
-    }
+    if (p === 'dead_health' || p === 'dead_stress') return; // handled by React overlay
     if (p === 'playing' && hitTest(cx, cy, PAUSE_BTN)) {
       togglePause();
       return;
@@ -428,11 +420,7 @@ export default function App() {
       startGame();
       return;
     }
-    if (p === 'dead_health' || p === 'dead_stress') {
-      if (hitTest(cx, cy, GO_MENU_BTN)) goToTitle();
-      else startGame();
-      return;
-    }
+    if (p === 'dead_health' || p === 'dead_stress') return; // handled by React overlay
     if (p === 'playing' && hitTest(cx, cy, PAUSE_BTN)) {
       togglePause();
       return;
@@ -449,7 +437,7 @@ export default function App() {
   const handleDPadPress = useCallback((dir: DDir) => {
     stateRef.current.keys.add(dir);
     const p = stateRef.current.gs.phase;
-    if (p === 'title' || p === 'dead_health' || p === 'dead_stress') startGame();
+    if (p === 'title') startGame();
   }, [startGame]);
 
   const handleDPadRelease = useCallback((dir: DDir) => {
@@ -489,6 +477,13 @@ export default function App() {
             touchAction: 'none',
           }}
         />
+        {gameOverGs && (
+          <GameOverOverlay
+            gs={gameOverGs}
+            onRetry={startGame}
+            onMenu={goToTitle}
+          />
+        )}
         {phase === 'title' && (
           <button
             onClick={e => { e.stopPropagation(); toggleMusic(); }}

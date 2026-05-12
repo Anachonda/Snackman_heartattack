@@ -17,21 +17,21 @@ const SFX_URL_OVERRIDES: Partial<Record<SfxName, string>> = {
   'level-complete': '/audio/sfx/Level-complete.wav',
 };
 
-// Returns the preloaded audio element if the WAV file exists, otherwise null.
+// Returns the preloaded audio element if the file exists, otherwise null.
+// The element is stored immediately so it can be played before canplaythrough fires.
 function sfx(name: SfxName): HTMLAudioElement | null {
   if (name in _sfx) return _sfx[name] ?? null;
-  // Mark as attempted so we don't keep retrying
-  _sfx[name] = null;
   const url = SFX_URL_OVERRIDES[name] ?? `/audio/sfx/${name}.wav`;
   const el = new Audio(url);
   el.preload = 'auto';
-  el.addEventListener('canplaythrough', () => { _sfx[name] = el; }, { once: true });
+  // Store immediately — browser can play before fully buffered
+  _sfx[name] = el;
   el.addEventListener('error', () => { _sfx[name] = null; }, { once: true });
   el.load();
-  return null;
+  return el;
 }
 
-// Plays a WAV sound effect if loaded, returns true. Otherwise returns false (use synth).
+// Plays a WAV sound effect, returns true on success. Otherwise returns false (use synth).
 function playSfx(name: SfxName, volume = 1): boolean {
   const el = sfx(name);
   if (!el) return false;

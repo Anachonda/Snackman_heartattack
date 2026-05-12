@@ -355,19 +355,23 @@ export function playRelax() {
 }
 
 // ── Music Manager ─────────────────────────────────────────────────────────────
+// Single track (Snackman). Playback rate scales with stress:
+//   stress 0   → rate 0.80  (20% slower than original)
+//   stress 100 → rate 1.50  (50% faster than original)
+// Rate changes are smoothed each frame to avoid jarring jumps.
 
-type MusicTrack = 'snackman' | 'stressman' | 'fatman' | 'none';
+const SNACKMAN_URL = 'https://raw.githubusercontent.com/Anachonda/Snackman-game/main/public/audio/Snackman.mp3';
 
-const MUSIC_URLS: Record<Exclude<MusicTrack, 'none'>, string> = {
-  snackman:  'https://raw.githubusercontent.com/Anachonda/Snackman-game/main/public/audio/Snackman.mp3',
-  stressman: 'https://raw.githubusercontent.com/Anachonda/Snackman-game/main/public/audio/Stressman.mp3',
-  fatman:    'https://raw.githubusercontent.com/Anachonda/Snackman-game/main/public/audio/Fatman.mp3',
-};
-
-const FADE_STEP = 0.016;   // volume change per ~16ms tick (~1 step per frame)
-const MUSIC_VOL = 0.55;    // target volume when fully faded in
+const MUSIC_VOL   = 0.55;
+const FADE_STEP   = 0.016;
+const RATE_MIN    = 0.80;
+const RATE_MAX    = 1.50;
+const RATE_SMOOTH = 0.015; // max rate change per frame (~16ms)
 
 let _musicEnabled = true;
+let _musicEl: HTMLAudioElement | null = null;
+let _targetRate = RATE_MIN;
+let _playing = false;
 
 export function getMusicEnabled(): boolean { return _musicEnabled; }
 
@@ -376,85 +380,63 @@ export function setMusicEnabled(on: boolean): void {
   if (!on) stopMusic();
 }
 
-const _audio: Partial<Record<Exclude<MusicTrack, 'none'>, HTMLAudioElement>> = {};
-let _currentTrack: MusicTrack = 'none';
-let _fadingOut: Array<{ el: HTMLAudioElement; vol: number }> = [];
-
-function _getAudio(track: Exclude<MusicTrack, 'none'>): HTMLAudioElement {
-  if (!_audio[track]) {
-    const el = new Audio(MUSIC_URLS[track]);
-    el.loop = true;
-    el.volume = 0;
-    el.preload = 'auto';
-    _audio[track] = el;
+function _getMusic(): HTMLAudioElement {
+  if (!_musicEl) {
+    _musicEl = new Audio(SNACKMAN_URL);
+    _musicEl.loop = true;
+    _musicEl.volume = 0;
+    _musicEl.playbackRate = RATE_MIN;
+    _musicEl.preload = 'auto';
   }
-  return _audio[track]!;
+  return _musicEl;
 }
 
-// Call once per frame from the game loop. Determines which track should play
-// based on game state, then crossfades smoothly.
-export function updateMusic(phase: string, health: number, stress: number) {
+// Call once per frame. stress is 0–100.
+export function updateMusic(phase: string, _health: number, stress: number) {
   if (!_musicEnabled) return;
-  // Determine desired track
-  let desired: MusicTrack = 'none';
-  if (phase === 'playing' || phase === 'paused') {
-    if (health < 50) {
-      desired = 'fatman';
-    } else if (stress >= 50) {
-      desired = 'stressman';
-    } else {
-      desired = 'snackman';
+
+  const el = _getMusic();
+  const active = phase === 'playing' || phase === 'paused';
+
+  if (active && !_playing) {
+    if (el.paused) {
+      el.volume = 0;
+      el.play().catch(() => {/* autoplay blocked */});
     }
+    _playing = true;
+  } else if (!active && _playing) {
+    // Fade out then pause handled below
   }
 
-  // Switch track if needed
-  if (desired !== _currentTrack) {
-    // Fade out current
-    if (_currentTrack !== 'none') {
-      const old = _getAudio(_currentTrack);
-      _fadingOut.push({ el: old, vol: old.volume });
-    }
-    _currentTrack = desired;
-    // Start new track — if it was fading out, rescue it from _fadingOut first
-    if (desired !== 'none') {
-      const el = _getAudio(desired);
-      _fadingOut = _fadingOut.filter(f => f.el !== el);
-      if (el.paused) {
-        el.volume = 0;
-        el.play().catch(() => {/* autoplay blocked */});
-      }
-      // if not paused (never fully faded yet), just let the fade-in below take over
-    }
-  }
-
-  // Fade in current track
-  if (_currentTrack !== 'none') {
-    const el = _getAudio(_currentTrack);
-    if (phase === 'paused') {
-      el.volume = Math.max(0.12, el.volume - FADE_STEP * 0.5);
-    } else {
-      el.volume = Math.min(MUSIC_VOL, el.volume + FADE_STEP);
-    }
-  }
-
-  // Fade out old tracks
-  _fadingOut = _fadingOut.filter(({ el }) => {
+  // Volume
+  if (!active) {
     el.volume = Math.max(0, el.volume - FADE_STEP * 1.5);
-    if (el.volume <= 0) {
+    if (el.volume <= 0 && !el.paused) {
       el.pause();
-      return false;
+      _playing = false;
     }
-    return true;
-  });
+  } else if (phase === 'paused') {
+    el.volume = Math.max(0.12, el.volume - FADE_STEP * 0.5);
+  } else {
+    el.volume = Math.min(MUSIC_VOL, el.volume + FADE_STEP);
+  }
+
+  // Target playback rate: linearly mapped from stress 0→100 to RATE_MIN→RATE_MAX
+  _targetRate = RATE_MIN + (stress / 100) * (RATE_MAX - RATE_MIN);
+
+  // Smooth the rate change so it doesn't snap
+  const diff = _targetRate - el.playbackRate;
+  const step = Math.sign(diff) * Math.min(Math.abs(diff), RATE_SMOOTH);
+  el.playbackRate = el.playbackRate + step;
 }
 
 export function stopMusic() {
-  for (const track of Object.keys(_audio) as Exclude<MusicTrack, 'none'>[]) {
-    const el = _audio[track];
-    if (el) { el.pause(); el.volume = 0; }
+  if (_musicEl) {
+    _musicEl.pause();
+    _musicEl.volume = 0;
+    _musicEl.playbackRate = RATE_MIN;
   }
-  _currentTrack = 'none';
-  _fadingOut = [];
+  _playing = false;
 }
 
 export function unlockAudio() {

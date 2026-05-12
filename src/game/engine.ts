@@ -296,9 +296,9 @@ export function tickEngine(state: EngineState): void {
     return;
   }
 
-  if (gs.phase !== 'playing') return;
-
   state.soundEvents = [];
+
+  if (gs.phase !== 'playing') return;
   gs.time++;
   state.spawnFoodTimer++;
   state.spawnEnemyTimer++;

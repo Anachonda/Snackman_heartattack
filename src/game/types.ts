@@ -29,18 +29,6 @@ export interface Particle {
 
 export type GamePhase = 'title' | 'playing' | 'paused' | 'level_complete' | 'dead_health' | 'dead_stress';
 
-export type SoundEvent =
-  | 'eat_good'
-  | 'eat_bad'
-  | 'hit_ghost'
-  | 'hit_email'
-  | 'hit_blob'
-  | 'level_complete'
-  | 'dead_health'
-  | 'dead_stress'
-  | 'relax'
-  | 'stressman_hit';
-
 export interface StressMan {
   pos: Vec2;
   vel: Vec2;

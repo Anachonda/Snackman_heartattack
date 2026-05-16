@@ -4,11 +4,7 @@ import GameOverOverlay from './GameOverOverlay';
 import { CANVAS_W, CANVAS_H, ENEMIES } from './game/constants';
 import { createInitialState, tickEngine, advanceLevel, EngineState } from './game/engine';
 import {
-  playGoodEat, playBadEat,
-  playGhostHit, playEmailHit, playBlobHit,
-  playLevelComplete, playHeartAttack, playBurnout,
-  playRelax, playTiredPuff, playFootstep, playStressManWarning,
-  updateMusic, stopMusic, unlockAudio, preloadSfx,
+  initMusic, updateMusic, stopMusic,
   getMusicEnabled, setMusicEnabled,
 } from './game/sounds';
 import {
@@ -29,7 +25,6 @@ import {
 const PAUSE_BTN  = { x: CANVAS_W - 48, y: 8, w: 38, h: 26 };
 const RESUME_BTN = { x: (CANVAS_W - 280) / 2, y: (CANVAS_H - 240) / 2 + 110, w: 280, h: 48 };
 const MENU_BTN   = { x: (CANVAS_W - 280) / 2, y: (CANVAS_H - 240) / 2 + 170, w: 280, h: 48 };
-
 
 function hitTest(x: number, y: number, r: typeof PAUSE_BTN) {
   return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
@@ -52,13 +47,13 @@ interface DPadProps {
   onRelease: (dir: DDir) => void;
 }
 
-const JOYSTICK_R = 72; // radius of the entire disc
-const DEAD_ZONE  = 0.28; // fraction of radius — inner dead zone
+const JOYSTICK_R = 72;
+const DEAD_ZONE  = 0.28;
 
 function dirFromAngle(dx: number, dy: number): DDir | null {
   const dist = Math.sqrt(dx * dx + dy * dy);
   if (dist < JOYSTICK_R * DEAD_ZONE) return null;
-  const angle = Math.atan2(dy, dx); // -π .. π, 0 = right
+  const angle = Math.atan2(dy, dx);
   const deg = ((angle * 180) / Math.PI + 360) % 360;
   if (deg >= 315 || deg < 45)  return 'ArrowRight';
   if (deg >= 45  && deg < 135) return 'ArrowDown';
@@ -107,7 +102,6 @@ function DPad({ onPress, onRelease }: DPadProps) {
   }
 
   const D = JOYSTICK_R * 2;
-  // Arrow triangle size / offset from edge
   const arrowInset = 14;
 
   return (
@@ -134,27 +128,22 @@ function DPad({ onPress, onRelease }: DPadProps) {
         WebkitUserSelect: 'none',
       }}
     >
-      {/* Up arrow */}
       <svg style={{ position: 'absolute', top: arrowInset, left: '50%', transform: 'translateX(-50%)' }}
         width={22} height={18} viewBox="0 0 22 18">
         <polygon points="11,0 22,18 0,18" fill="rgba(180,210,255,0.65)" />
       </svg>
-      {/* Down arrow */}
       <svg style={{ position: 'absolute', bottom: arrowInset, left: '50%', transform: 'translateX(-50%)' }}
         width={22} height={18} viewBox="0 0 22 18">
         <polygon points="11,18 22,0 0,0" fill="rgba(180,210,255,0.65)" />
       </svg>
-      {/* Left arrow */}
       <svg style={{ position: 'absolute', left: arrowInset, top: '50%', transform: 'translateY(-50%)' }}
         width={18} height={22} viewBox="0 0 18 22">
         <polygon points="0,11 18,0 18,22" fill="rgba(180,210,255,0.65)" />
       </svg>
-      {/* Right arrow */}
       <svg style={{ position: 'absolute', right: arrowInset, top: '50%', transform: 'translateY(-50%)' }}
         width={18} height={22} viewBox="0 0 18 22">
         <polygon points="18,11 0,0 0,22" fill="rgba(180,210,255,0.65)" />
       </svg>
-      {/* Centre dot */}
       <div style={{
         position: 'absolute',
         top: '50%', left: '50%',
@@ -168,10 +157,98 @@ function DPad({ onPress, onRelease }: DPadProps) {
   );
 }
 
+// ── Tap to Start overlay ──────────────────────────────────────────────────────
+
+interface TapToStartProps {
+  onStart: () => void;
+}
+
+function TapToStart({ onStart }: TapToStartProps) {
+  return (
+    <div
+      onClick={onStart}
+      onTouchEnd={e => { e.preventDefault(); onStart(); }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(5, 8, 20, 0.92)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        zIndex: 9999,
+        cursor: 'pointer',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+      }}
+    >
+      <div style={{
+        textAlign: 'center',
+        padding: '2.5rem 3rem',
+        borderRadius: '1.25rem',
+        border: '1px solid rgba(100,140,255,0.25)',
+        background: 'rgba(10,18,45,0.7)',
+        boxShadow: '0 8px 48px rgba(0,0,0,0.6)',
+        maxWidth: 340,
+      }}>
+        <div style={{
+          fontSize: '3rem',
+          marginBottom: '0.5rem',
+          lineHeight: 1,
+          filter: 'drop-shadow(0 0 18px rgba(100,160,255,0.5))',
+        }}>
+          🎮
+        </div>
+        <h1 style={{
+          fontSize: '1.6rem',
+          fontWeight: 700,
+          color: '#e2eaff',
+          margin: '0 0 0.4rem',
+          letterSpacing: '0.02em',
+        }}>
+          Snackman
+        </h1>
+        <p style={{
+          fontSize: '0.85rem',
+          color: '#7090c0',
+          margin: '0 0 2rem',
+          lineHeight: 1.5,
+        }}>
+          Eat healthy, dodge stress, survive.
+        </p>
+        <div style={{
+          display: 'inline-block',
+          padding: '0.75rem 2.2rem',
+          borderRadius: '0.65rem',
+          background: 'rgba(50,100,220,0.85)',
+          color: '#e8f0ff',
+          fontSize: '1.05rem',
+          fontWeight: 700,
+          letterSpacing: '0.08em',
+          boxShadow: '0 2px 18px rgba(50,100,220,0.45)',
+          animation: 'tapPulse 1.8s ease-in-out infinite',
+        }}>
+          TAP TO START
+        </div>
+      </div>
+      <style>{`
+        @keyframes tapPulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.75; transform: scale(0.97); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ── App ───────────────────────────────────────────────────────────────────────
+
 export default function App() {
-  const canvasRef   = useRef<HTMLCanvasElement>(null);
-  const stateRef    = useRef<EngineState>(createInitialState());
-  const rafRef      = useRef<number>(0);
+  const canvasRef    = useRef<HTMLCanvasElement>(null);
+  const stateRef     = useRef<EngineState>(createInitialState());
+  const rafRef       = useRef<number>(0);
   const frameRef     = useRef(0);
   const mouseRef     = useRef<{ x: number; y: number }>({ x: -1, y: -1 });
   const lastPhaseRef = useRef<string>('title');
@@ -179,18 +256,25 @@ export default function App() {
   const [musicOn, setMusicOn] = useState(true);
   const [phase, setPhase] = useState<string>('title');
   const [gameOverGs, setGameOverGs] = useState<import('./game/types').GameState | null>(null);
+  // showTap stays true until the first real user interaction
+  const [showTap, setShowTap] = useState(true);
+
+  const handleTapToStart = useCallback(() => {
+    initMusic();
+    setShowTap(false);
+    stateRef.current.gs.phase = 'playing';
+    setGameOverGs(null);
+    setPhase('playing');
+    lastPhaseRef.current = 'playing';
+  }, []);
 
   const toggleMusic = useCallback(() => {
     const next = !getMusicEnabled();
     setMusicEnabled(next);
     setMusicOn(next);
-    // On mobile this call happens inside a click handler — that's the user
-    // gesture that unlocks HTMLAudioElement autoplay for the session.
-    if (next) { unlockAudio(); preloadSfx(); }
   }, []);
 
   const startGame = useCallback(() => {
-    preloadSfx();
     stateRef.current = createInitialState();
     stateRef.current.gs.phase = 'playing';
     setGameOverGs(null);
@@ -200,7 +284,6 @@ export default function App() {
     stopMusic();
     stateRef.current = createInitialState();
     setGameOverGs(null);
-    // phase stays 'title'
   }, []);
 
   const togglePause = useCallback(() => {
@@ -219,51 +302,22 @@ export default function App() {
       const { gs } = state;
       frameRef.current++;
 
-      // Auto-advance after level complete freeze
       if (gs.phase === 'level_complete' && gs.levelCompleteTimer <= 0) {
         stateRef.current = advanceLevel(state);
         stateRef.current.keys = state.keys;
       }
 
-      // Don't tick engine while paused
       if (gs.phase !== 'paused') {
         tickEngine(stateRef.current);
       }
       const s = stateRef.current;
 
-      // ── Sound dispatch ──────────────────────────────────────────────────────
-      for (const ev of s.soundEvents) {
-        if (ev === 'eat_good')            playGoodEat();
-        else if (ev === 'eat_bad')        playBadEat();
-        else if (ev === 'hit_ghost')      playGhostHit();
-        else if (ev === 'hit_email')      playEmailHit();
-        else if (ev === 'hit_blob')       playBlobHit();
-        else if (ev === 'level_complete') playLevelComplete();
-        else if (ev === 'dead_health')    playHeartAttack();
-        else if (ev === 'dead_stress')    playBurnout();
-        else if (ev === 'relax')          playRelax();
-        else if (ev === 'stressman_hit')  playGhostHit();
+      // Music (only when audio has been unlocked via tap)
+      if (!showTap) {
+        updateMusic(s.gs.phase, s.gs.stress);
       }
 
-      // Music
-      updateMusic(s.gs.phase, s.gs.health, s.gs.stress);
-
-      // Continuous / ambient sounds
-      const moving = Math.abs(s.playerVel.x) > 0.2 || Math.abs(s.playerVel.y) > 0.2;
-      if (s.gs.phase === 'playing' && moving) {
-        playFootstep(s.gs.speedBoostTimer > 0);
-      }
-      if (s.gs.phase === 'playing' && s.gs.health < 35 && moving) {
-        playTiredPuff(s.gs.health);
-      }
-      if (s.gs.phase === 'playing' && s.stressMan) {
-        playStressManWarning(s.gs.stress);
-      }
-
-      // ── Render ──────────────────────────────────────────────────────────────
-      ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
-
-      // Sync phase to React state for overlay UI (throttled via ref)
+      // Sync phase to React state
       if (s.gs.phase !== lastPhaseRef.current) {
         lastPhaseRef.current = s.gs.phase;
         setPhase(s.gs.phase);
@@ -271,6 +325,9 @@ export default function App() {
           setGameOverGs({ ...s.gs });
         }
       }
+
+      // ── Render ──────────────────────────────────────────────────────────────
+      ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
 
       const { x: mx, y: my } = mouseRef.current;
 
@@ -292,7 +349,6 @@ export default function App() {
         if (s.stressMan) drawStressMan(ctx, s.stressMan.pos, s.gs.stress, frameRef.current);
         drawHUD(ctx, s.gs, frameRef.current);
 
-        // Pause button (shown during play and pause)
         if (s.gs.phase === 'playing' || s.gs.phase === 'paused') {
           drawPauseButton(ctx, hitTest(mx, my, PAUSE_BTN));
         }
@@ -312,12 +368,22 @@ export default function App() {
 
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const state = stateRef.current;
       if (e.type === 'keydown') {
+        // First key interaction also counts as the tap-to-start gesture
+        if (showTap) {
+          initMusic();
+          setShowTap(false);
+          state.gs.phase = 'playing';
+          setPhase('playing');
+          lastPhaseRef.current = 'playing';
+          return;
+        }
         if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') {
           const p = state.gs.phase;
           if (p === 'playing' || p === 'paused') togglePause();
@@ -343,20 +409,8 @@ export default function App() {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKey);
     };
-  }, [startGame, togglePause]);
+  }, [showTap, startGame, togglePause]);
 
-  // Unlock audio on first touch (mobile autoplay policy)
-  useEffect(() => {
-    if (!isMobile) return;
-    const handler = () => {
-      unlockAudio();
-      document.removeEventListener('touchstart', handler);
-    };
-    document.addEventListener('touchstart', handler, { once: true });
-    return () => document.removeEventListener('touchstart', handler);
-  }, [isMobile]);
-
-  // Track mouse position in canvas coords for hover effects
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -374,6 +428,7 @@ export default function App() {
   }, []);
 
   const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (showTap) return; // handled by TapToStart overlay
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
@@ -384,27 +439,17 @@ export default function App() {
 
     const p = stateRef.current.gs.phase;
 
-    if (p === 'title') {
-      startGame();
-      return;
-    }
-    if (p === 'dead_health' || p === 'dead_stress') return; // handled by React overlay
-    if (p === 'playing' && hitTest(cx, cy, PAUSE_BTN)) {
-      togglePause();
-      return;
-    }
+    if (p === 'title') { startGame(); return; }
+    if (p === 'dead_health' || p === 'dead_stress') return;
+    if (p === 'playing' && hitTest(cx, cy, PAUSE_BTN)) { togglePause(); return; }
     if (p === 'paused') {
-      if (hitTest(cx, cy, PAUSE_BTN) || hitTest(cx, cy, RESUME_BTN)) {
-        togglePause();
-      } else if (hitTest(cx, cy, MENU_BTN)) {
-        goToTitle();
-      }
+      if (hitTest(cx, cy, PAUSE_BTN) || hitTest(cx, cy, RESUME_BTN)) togglePause();
+      else if (hitTest(cx, cy, MENU_BTN)) goToTitle();
     }
-  }, [startGame, togglePause, goToTitle]);
+  }, [showTap, startGame, togglePause, goToTitle]);
 
-  // Handle touch taps on the canvas — translates to canvas coords and fires the
-  // same hit-test logic as handleClick so the pause button works on mobile.
   const handleCanvasTouch = useCallback((e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (showTap) return;
     const canvas = canvasRef.current;
     if (!canvas || e.changedTouches.length === 0) return;
     const touch = e.changedTouches[0];
@@ -416,23 +461,14 @@ export default function App() {
 
     const p = stateRef.current.gs.phase;
 
-    if (p === 'title') {
-      startGame();
-      return;
-    }
-    if (p === 'dead_health' || p === 'dead_stress') return; // handled by React overlay
-    if (p === 'playing' && hitTest(cx, cy, PAUSE_BTN)) {
-      togglePause();
-      return;
-    }
+    if (p === 'title') { startGame(); return; }
+    if (p === 'dead_health' || p === 'dead_stress') return;
+    if (p === 'playing' && hitTest(cx, cy, PAUSE_BTN)) { togglePause(); return; }
     if (p === 'paused') {
-      if (hitTest(cx, cy, PAUSE_BTN) || hitTest(cx, cy, RESUME_BTN)) {
-        togglePause();
-      } else if (hitTest(cx, cy, MENU_BTN)) {
-        goToTitle();
-      }
+      if (hitTest(cx, cy, PAUSE_BTN) || hitTest(cx, cy, RESUME_BTN)) togglePause();
+      else if (hitTest(cx, cy, MENU_BTN)) goToTitle();
     }
-  }, [startGame, togglePause, goToTitle]);
+  }, [showTap, startGame, togglePause, goToTitle]);
 
   const handleDPadPress = useCallback((dir: DDir) => {
     stateRef.current.keys.add(dir);
@@ -446,7 +482,6 @@ export default function App() {
 
   const aspectRatio = CANVAS_W / CANVAS_H;
 
-  // Prevent page scroll when touching the canvas on mobile
   useEffect(() => {
     const el = canvasRef.current;
     if (!el || !isMobile) return;
@@ -461,6 +496,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center select-none p-2" style={{ touchAction: 'manipulation' }}>
+      {showTap && <TapToStart onStart={handleTapToStart} />}
       <div style={{ position: 'relative', display: 'inline-block' }}>
         <canvas
           ref={canvasRef}
@@ -484,7 +520,7 @@ export default function App() {
             onMenu={goToTitle}
           />
         )}
-        {phase === 'title' && (
+        {!showTap && phase === 'title' && (
           <button
             onClick={e => { e.stopPropagation(); toggleMusic(); }}
             onTouchEnd={e => { e.stopPropagation(); toggleMusic(); }}
@@ -506,7 +542,7 @@ export default function App() {
           WASD / ARROW KEYS to move &nbsp;·&nbsp; Stand still near a couch to chill &nbsp;·&nbsp; ESC to pause
         </p>
       )}
-      {isMobile && <DPad onPress={handleDPadPress} onRelease={handleDPadRelease} />}
+      {isMobile && !showTap && <DPad onPress={handleDPadPress} onRelease={handleDPadRelease} />}
     </div>
   );
 }

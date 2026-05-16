@@ -76,6 +76,36 @@ export function drawMaze(ctx: CanvasRenderingContext2D) {
       }
     }
   }
+
+  // Draw tunnel arrows on open left/right edges
+  for (let row = 0; row < MAZE_ROWS; row++) {
+    if (MAZE[row][0] === 0 && MAZE[row][MAZE_COLS - 1] === 0) {
+      const cy = MAZE_Y + row * TILE + TILE / 2;
+      const arrowColor = 'rgba(250,204,21,0.55)';
+      ctx.fillStyle = arrowColor;
+      ctx.shadowColor = '#facc15';
+      ctx.shadowBlur = 6;
+
+      // Left arrow (pointing left, indicating exit)
+      ctx.beginPath();
+      ctx.moveTo(MAZE_X + 10, cy);
+      ctx.lineTo(MAZE_X + 24, cy - 8);
+      ctx.lineTo(MAZE_X + 24, cy + 8);
+      ctx.closePath();
+      ctx.fill();
+
+      // Right arrow (pointing right)
+      ctx.beginPath();
+      ctx.moveTo(MAZE_X + MAZE_COLS * TILE - 10, cy);
+      ctx.lineTo(MAZE_X + MAZE_COLS * TILE - 24, cy - 8);
+      ctx.lineTo(MAZE_X + MAZE_COLS * TILE - 24, cy + 8);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
+    }
+  }
 }
 
 // ── HUD ───────────────────────────────────────────────────────────────────────

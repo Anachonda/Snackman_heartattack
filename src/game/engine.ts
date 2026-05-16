@@ -1,6 +1,6 @@
 import { Entity, EntityKind, GameState, GamePhase, Particle, StressMan, Vec2 } from './types';
 import {
-  TILE, MAZE_X, MAZE_Y, MAZE_COLS, MAZE_ROWS,
+  TILE, MAZE_X, MAZE_Y, MAZE_COLS, MAZE_ROWS, MAZE,
   PLAYER_SPEED, PLAYER_RADIUS, SPEED_BOOST_MULT, SPEED_BOOST_DURATION,
   GHOST_SPEED, EMAIL_SPEED, BLOB_SPEED,
   HEALTH_DRAIN_RATE, STRESS_CREEP,
@@ -72,7 +72,7 @@ function stressGain(base: number, level: number): number {
 }
 
 function maxEnemiesForLevel(level: number): number {
-  return Math.min(10, MAX_ENEMIES + (level - 1) * LEVEL_MAX_ENEMIES_BONUS);
+  return Math.min(5, MAX_ENEMIES + (level - 1) * LEVEL_MAX_ENEMIES_BONUS);
 }
 
 // ── Fixed chair positions ─────────────────────────────────────────────────────
@@ -113,6 +113,35 @@ function resolveWallCollision(pos: Vec2, vel: Vec2, radius: number): { pos: Vec2
   }
 
   return { pos: { x, y }, vel: { x: vx, y: vy } };
+}
+
+// ── Tunnel wrap ───────────────────────────────────────────────────────────────
+
+// Returns the maze row (0-indexed) of tunnel rows — rows where col 0 and col MAZE_COLS-1 are open.
+const TUNNEL_ROWS: number[] = (() => {
+  const rows: number[] = [];
+  for (let r = 0; r < MAZE_ROWS; r++) {
+    if (MAZE[r][0] === 0 && MAZE[r][MAZE_COLS - 1] === 0) rows.push(r);
+  }
+  return rows;
+})();
+
+const MAZE_LEFT  = MAZE_X;
+const MAZE_RIGHT = MAZE_X + MAZE_COLS * TILE;
+
+// Wrap a position through the tunnel if it exits left or right on a tunnel row.
+// Returns the (possibly wrapped) position, or null if no wrap occurred.
+function applyTunnelWrap(pos: Vec2): Vec2 {
+  const row = Math.round((pos.y - MAZE_Y) / TILE);
+  if (!TUNNEL_ROWS.includes(row)) return pos;
+
+  if (pos.x < MAZE_LEFT + TILE * 0.5) {
+    return { x: MAZE_RIGHT - TILE * 0.5 - 2, y: pos.y };
+  }
+  if (pos.x > MAZE_RIGHT - TILE * 0.5) {
+    return { x: MAZE_LEFT + TILE * 0.5 + 2, y: pos.y };
+  }
+  return pos;
 }
 
 // ── State factory ─────────────────────────────────────────────────────────────
@@ -348,11 +377,10 @@ export function tickEngine(state: EngineState): void {
     y: state.player.y + state.playerVel.y,
   };
   const resolved = resolveWallCollision(newPos, state.playerVel, PLAYER_RADIUS);
-  state.player = resolved.pos;
+  state.player = applyTunnelWrap(resolved.pos);
   state.playerVel = resolved.vel;
 
-  // Clamp
-  state.player.x = Math.max(MAZE_X + PLAYER_RADIUS, Math.min(MAZE_X + MAZE_COLS * TILE - PLAYER_RADIUS, state.player.x));
+  // Clamp y only; x wraps through the tunnel
   state.player.y = Math.max(MAZE_Y + PLAYER_RADIUS, Math.min(MAZE_Y + MAZE_ROWS * TILE - PLAYER_RADIUS, state.player.y));
 
   if (gs.speedBoostTimer > 0) {
@@ -417,7 +445,7 @@ export function tickEngine(state: EngineState): void {
 
     const newE = { x: e.pos.x + e.vel.x, y: e.pos.y + e.vel.y };
     const er = resolveWallCollision(newE, e.vel, 14);
-    e.pos = er.pos;
+    e.pos = applyTunnelWrap(er.pos);
     e.vel = er.vel;
 
     if (Math.abs(e.vel.x) < 0.1 && Math.abs(e.vel.y) < 0.1) {

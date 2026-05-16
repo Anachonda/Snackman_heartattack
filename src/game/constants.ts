@@ -43,7 +43,7 @@ export const RELAX_DURATION      = 180;
 export const SPAWN_INTERVAL_FOOD  = 160;
 export const SPAWN_INTERVAL_ENEMY = 400;
 export const MAX_FOODS   = 12;
-export const MAX_ENEMIES = 3;  // level 1 baseline; levels 2+ add via LEVEL_MAX_ENEMIES_BONUS
+export const MAX_ENEMIES = 3;  // level 1 baseline; capped at 5 via maxEnemiesForLevel
 
 export const HEALTHY_FOODS   = ['salmon', 'broccoli', 'nuts'] as const;
 export const UNHEALTHY_FOODS = ['donut', 'fries', 'cigarette'] as const;
@@ -89,9 +89,9 @@ export const LEVEL_STRESS_GAIN_BONUS  = 2;     // added to all stress-hit values
 export const LEVEL_MAX_ENEMIES_BONUS  = 1;     // one extra max enemy per level: L1=3, L2=4, L3=5…
 // AI aggression per level: trackWeight and noise factors are adjusted in engine
 export const LEVEL_TRACK_WEIGHT_BASE  = 0.10;  // level 1 player-tracking blend weight
-export const LEVEL_TRACK_WEIGHT_BONUS = 0.06;  // added per level (L1=0.10, L2=0.16, L3=0.22…)
+export const LEVEL_TRACK_WEIGHT_BONUS = 0.08;  // added per level — enemies get smarter faster now that count is capped
 export const LEVEL_NOISE_BASE         = 0.30;  // level 1 random wander noise
-export const LEVEL_NOISE_BONUS        = 0.08;  // subtracted per level (less random = smarter)
+export const LEVEL_NOISE_BONUS        = 0.10;  // subtracted per level (less random = smarter)
 
 // Maze grid: 1 = wall, 0 = path
 // 20 cols × 15 rows
@@ -103,7 +103,7 @@ export const MAZE: number[][] = [
   [1,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,1],
   [1,0,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,0,1],
   [1,0,0,0,0,1,0,0,0,1,1,0,0,0,1,0,0,0,0,1],
-  [1,1,1,1,0,1,1,1,0,0,0,0,1,1,1,0,1,1,1,1],
+  [0,1,1,1,0,1,1,1,0,0,0,0,1,1,1,0,1,1,1,0],  // tunnel row: open left & right edges
   [1,0,0,0,0,1,0,0,0,1,1,0,0,0,1,0,0,0,0,1],
   [1,0,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,0,1],
   [1,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,1],

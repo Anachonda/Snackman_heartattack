@@ -258,9 +258,11 @@ export default function App() {
   const [gameOverGs, setGameOverGs] = useState<import('./game/types').GameState | null>(null);
   // showTap stays true until the first real user interaction
   const [showTap, setShowTap] = useState(true);
+  const audioUnlockedRef = useRef(false);
 
   const handleTapToStart = useCallback(() => {
     initMusic();
+    audioUnlockedRef.current = true;
     setShowTap(false);
     stateRef.current.gs.phase = 'playing';
     setGameOverGs(null);
@@ -312,8 +314,8 @@ export default function App() {
       }
       const s = stateRef.current;
 
-      // Music (only when audio has been unlocked via tap)
-      if (!showTap) {
+      // Music (only after user has unlocked audio via tap)
+      if (audioUnlockedRef.current) {
         updateMusic(s.gs.phase, s.gs.stress);
       }
 
@@ -378,6 +380,7 @@ export default function App() {
         // First key interaction also counts as the tap-to-start gesture
         if (showTap) {
           initMusic();
+          audioUnlockedRef.current = true;
           setShowTap(false);
           state.gs.phase = 'playing';
           setPhase('playing');

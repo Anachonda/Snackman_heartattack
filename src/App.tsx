@@ -4,8 +4,10 @@ import GameOverOverlay from './GameOverOverlay';
 import { CANVAS_W, CANVAS_H, ENEMIES } from './game/constants';
 import { createInitialState, tickEngine, advanceLevel, EngineState } from './game/engine';
 import {
-  initMusic, updateMusic, stopMusic,
+  initMusic, initSfx, updateMusic, stopMusic,
   getMusicEnabled, setMusicEnabled,
+  playSfxGoodEat, playSfxBadEat, playSfxEnemyHit,
+  playSfxLevelComplete, playSfxDead,
 } from './game/sounds';
 import {
   drawMaze,
@@ -261,6 +263,7 @@ export default function App() {
   const audioUnlockedRef = useRef(false);
 
   const handleTapToStart = useCallback(() => {
+    initSfx();
     initMusic();
     audioUnlockedRef.current = true;
     setShowTap(false);
@@ -314,9 +317,16 @@ export default function App() {
       }
       const s = stateRef.current;
 
-      // Music (only after user has unlocked audio via tap)
+      // Audio (only after user has unlocked audio via tap)
       if (audioUnlockedRef.current) {
         updateMusic(s.gs.phase, s.gs.stress);
+        for (const ev of s.sfxQueue) {
+          if (ev === 'eat_good')      playSfxGoodEat();
+          else if (ev === 'eat_bad')  playSfxBadEat();
+          else if (ev === 'enemy_hit') playSfxEnemyHit();
+          else if (ev === 'level_complete') playSfxLevelComplete();
+          else if (ev === 'dead')     playSfxDead();
+        }
       }
 
       // Sync phase to React state
@@ -379,6 +389,7 @@ export default function App() {
       if (e.type === 'keydown') {
         // First key interaction also counts as the tap-to-start gesture
         if (showTap) {
+          initSfx();
           initMusic();
           audioUnlockedRef.current = true;
           setShowTap(false);

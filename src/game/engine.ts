@@ -179,6 +179,7 @@ function _buildState(
     relaxingChairId: null as number | null,
     _respawnQ: [] as { kind: EntityKind; delay: number }[],
     stressMan: null as StressMan | null,
+    sfxQueue: [] as string[],
     level,
   };
 }
@@ -294,6 +295,8 @@ export function tickEngine(state: EngineState): void {
     gs.time++;
     return;
   }
+
+  state.sfxQueue = [];
 
   if (gs.phase !== 'playing') return;
   gs.time++;
@@ -472,12 +475,14 @@ export function tickEngine(state: EngineState): void {
         // Permanent speed bonus from eating healthy
         gs.permSpeedBonus = Math.min(PERM_SPEED_MAX, gs.permSpeedBonus + PERM_SPEED_PER_HEALTHY);
         spawnParticle(state.particles, e.pos, '+HEALTH +SPEED', '#22c55e');
+        state.sfxQueue.push('eat_good');
 
         // Check level complete
         if (gs.healthyCollected >= gs.healthyGoal) {
           gs.phase = 'level_complete';
           gs.levelCompleteTimer = LEVEL_COMPLETE_FREEZE;
           spawnParticle(state.particles, state.player, 'LEVEL COMPLETE!', '#facc15');
+          state.sfxQueue.push('level_complete');
         }
       } else if (e.kind === 'cigarette') {
         // Cigarette: heavy health loss now + delayed stress spike later
@@ -490,6 +495,7 @@ export function tickEngine(state: EngineState): void {
         }
         spawnParticle(state.particles, e.pos, 'BAD IDEA...', '#64748b');
         spawnParticle(state.particles, { x: e.pos.x, y: e.pos.y - 18 }, 'STRESS COMING', '#94a3b8');
+        state.sfxQueue.push('eat_bad');
       } else if (SUGARY_FOODS.includes(e.kind as any)) {
         // Sugary: health loss + stress + sugar rush boost + crash after
         gs.health = Math.max(0, gs.health - HEALTH_LOSS_UNHEALTHY);
@@ -504,19 +510,23 @@ export function tickEngine(state: EngineState): void {
         }
         const msgs: Record<string, string> = { donut: 'SUGAR RUSH!!', fries: 'GREASY SPEED!' };
         spawnParticle(state.particles, e.pos, msgs[e.kind] ?? 'SPEED!', '#f59e0b');
+        state.sfxQueue.push('eat_bad');
       } else if (e.kind === 'deadline_ghost') {
         gs.stress = Math.min(100, gs.stress + stressGain(STRESS_GAIN_GHOST, state.level));
         spawnParticle(state.particles, e.pos, '+STRESS!', '#a78bfa');
         state._respawnQ.push({ kind: 'deadline_ghost', delay: 240 });
+        state.sfxQueue.push('enemy_hit');
       } else if (e.kind === 'email_monster') {
         gs.stress = Math.min(100, gs.stress + stressGain(STRESS_GAIN_EMAIL, state.level));
         spawnParticle(state.particles, e.pos, '99 EMAILS!', '#60a5fa');
         state._respawnQ.push({ kind: 'email_monster', delay: 240 });
+        state.sfxQueue.push('enemy_hit');
       } else if (e.kind === 'cholesterol_blob') {
         gs.stress = Math.min(100, gs.stress + stressGain(STRESS_GAIN_BLOB, state.level));
         gs.health = Math.max(0, gs.health - 14);
         spawnParticle(state.particles, e.pos, 'CLOGGED!', '#f87171');
         state._respawnQ.push({ kind: 'cholesterol_blob', delay: 240 });
+        state.sfxQueue.push('enemy_hit');
       }
     }
   }
@@ -578,7 +588,7 @@ export function tickEngine(state: EngineState): void {
 
   // Lose conditions (only check when playing, not level_complete)
   if (gs.phase === 'playing') {
-    if (gs.health <= 0)   gs.phase = 'dead_health';
-    if (gs.stress >= 100) gs.phase = 'dead_stress';
+    if (gs.health <= 0)   { gs.phase = 'dead_health'; state.sfxQueue.push('dead'); }
+    if (gs.stress >= 100) { gs.phase = 'dead_stress'; state.sfxQueue.push('dead'); }
   }
 }

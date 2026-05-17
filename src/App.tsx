@@ -346,7 +346,7 @@ export default function App() {
       if (s.gs.phase === 'title') {
         drawTitleScreen(ctx, frameRef.current);
       } else {
-        drawMaze(ctx);
+        drawMaze(ctx, s.gs.level);
 
         const chairs  = s.entities.filter(e => e.kind === 'lazy_chair');
         const foods   = s.entities.filter(e => e.active && e.kind !== 'lazy_chair' && !ENEMIES.includes(e.kind as any));

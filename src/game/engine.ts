@@ -1,6 +1,6 @@
 import { Entity, EntityKind, GameState, GamePhase, Particle, StressMan, Vec2 } from './types';
 import {
-  TILE, MAZE_X, MAZE_Y, MAZE_COLS, MAZE_ROWS, MAZE,
+  TILE, MAZE_X, MAZE_Y, MAZE_COLS, MAZE_ROWS,
   PLAYER_SPEED, PLAYER_RADIUS, SPEED_BOOST_MULT, SPEED_BOOST_DURATION,
   GHOST_SPEED, EMAIL_SPEED, BLOB_SPEED,
   HEALTH_DRAIN_RATE, STRESS_CREEP,
@@ -22,7 +22,7 @@ import {
   LEVEL_TRACK_WEIGHT_BASE, LEVEL_TRACK_WEIGHT_BONUS,
   LEVEL_NOISE_BASE, LEVEL_NOISE_BONUS,
 } from './constants';
-import { spawnParticle, tileCenter, isWall, uid } from './renderer';
+import { spawnParticle, tileCenter, isWall, mazeForLevel, uid } from './renderer';
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -36,28 +36,28 @@ function normalize(v: Vec2): Vec2 {
   return { x: v.x / len, y: v.y / len };
 }
 
-function randPath(): Vec2 {
+function randPath(level = 1): Vec2 {
   let tries = 0;
   while (tries < 200) {
     const col = Math.floor(Math.random() * MAZE_COLS);
     const row = Math.floor(1 + Math.random() * (MAZE_ROWS - 2));
-    if (!isWall(col, row)) return tileCenter(col, row);
+    if (!isWall(col, row, level)) return tileCenter(col, row);
     tries++;
   }
   return tileCenter(1, 1);
 }
 
-function randEdgePath(): Vec2 {
+function randEdgePath(level = 1): Vec2 {
   const candidates: Vec2[] = [];
   for (let col = 0; col < MAZE_COLS; col++) {
-    if (!isWall(col, 1)) candidates.push(tileCenter(col, 1));
-    if (!isWall(col, MAZE_ROWS - 2)) candidates.push(tileCenter(col, MAZE_ROWS - 2));
+    if (!isWall(col, 1, level)) candidates.push(tileCenter(col, 1));
+    if (!isWall(col, MAZE_ROWS - 2, level)) candidates.push(tileCenter(col, MAZE_ROWS - 2));
   }
   for (let row = 1; row < MAZE_ROWS - 1; row++) {
-    if (!isWall(1, row)) candidates.push(tileCenter(1, row));
-    if (!isWall(MAZE_COLS - 2, row)) candidates.push(tileCenter(MAZE_COLS - 2, row));
+    if (!isWall(1, row, level)) candidates.push(tileCenter(1, row));
+    if (!isWall(MAZE_COLS - 2, row, level)) candidates.push(tileCenter(MAZE_COLS - 2, row));
   }
-  if (candidates.length === 0) return randPath();
+  if (candidates.length === 0) return randPath(level);
   return { ...candidates[Math.floor(Math.random() * candidates.length)] };
 }
 
@@ -83,7 +83,7 @@ const CHAIR_TILES: [number, number][] = [
 
 // ── Wall collision ────────────────────────────────────────────────────────────
 
-function resolveWallCollision(pos: Vec2, vel: Vec2, radius: number): { pos: Vec2; vel: Vec2 } {
+function resolveWallCollision(pos: Vec2, vel: Vec2, radius: number, level = 1): { pos: Vec2; vel: Vec2 } {
   let { x, y } = pos;
   let { x: vx, y: vy } = vel;
 
@@ -99,7 +99,7 @@ function resolveWallCollision(pos: Vec2, vel: Vec2, radius: number): { pos: Vec2
     const py = y + dy;
     const col = Math.floor((px - MAZE_X) / TILE);
     const row = Math.floor((py - MAZE_Y) / TILE);
-    if (isWall(col, row)) {
+    if (isWall(col, row, level)) {
       const wallLeft   = MAZE_X + col * TILE;
       const wallRight  = wallLeft + TILE;
       const wallTop    = MAZE_Y + row * TILE;
@@ -117,23 +117,22 @@ function resolveWallCollision(pos: Vec2, vel: Vec2, radius: number): { pos: Vec2
 
 // ── Tunnel wrap ───────────────────────────────────────────────────────────────
 
-// Returns the maze row (0-indexed) of tunnel rows — rows where col 0 and col MAZE_COLS-1 are open.
-const TUNNEL_ROWS: number[] = (() => {
+// Returns tunnel rows for the given level's maze.
+function tunnelRowsForLevel(level: number): number[] {
+  const maze = mazeForLevel(level);
   const rows: number[] = [];
   for (let r = 0; r < MAZE_ROWS; r++) {
-    if (MAZE[r][0] === 0 && MAZE[r][MAZE_COLS - 1] === 0) rows.push(r);
+    if (maze[r][0] === 0 && maze[r][MAZE_COLS - 1] === 0) rows.push(r);
   }
   return rows;
-})();
+}
 
 const MAZE_LEFT  = MAZE_X;
 const MAZE_RIGHT = MAZE_X + MAZE_COLS * TILE;
 
-// Wrap a position through the tunnel if it exits left or right on a tunnel row.
-// Returns the (possibly wrapped) position, or null if no wrap occurred.
-function applyTunnelWrap(pos: Vec2): Vec2 {
+function applyTunnelWrap(pos: Vec2, level = 1): Vec2 {
   const row = Math.round((pos.y - MAZE_Y) / TILE);
-  if (!TUNNEL_ROWS.includes(row)) return pos;
+  if (!tunnelRowsForLevel(level).includes(row)) return pos;
 
   if (pos.x < MAZE_LEFT + TILE * 0.5) {
     return { x: MAZE_RIGHT - TILE * 0.5 - 2, y: pos.y };
@@ -170,8 +169,8 @@ function _buildState(
   }
 
   // Seed food — ensure at least MIN_HEALTHY_ON_SCREEN healthy items from the start
-  for (let i = 0; i < MIN_HEALTHY_ON_SCREEN; i++) _spawnFood(entities, true);
-  for (let i = 0; i < 3; i++) _spawnFood(entities);
+  for (let i = 0; i < MIN_HEALTHY_ON_SCREEN; i++) _spawnFood(entities, true, level);
+  for (let i = 0; i < 3; i++) _spawnFood(entities, false, level);
 
   // Spawn exactly the level's max enemy count, one of each type then cycle
   const startingEnemyCount = maxEnemiesForLevel(level);
@@ -272,12 +271,11 @@ function _pickWeightedFood(healthyOnly: boolean): EntityKind {
   return pool[0][0];
 }
 
-function _spawnFood(entities: Entity[], forceHealthy = false) {
+function _spawnFood(entities: Entity[], forceHealthy = false, level = 1) {
   const kind = _pickWeightedFood(forceHealthy);
-  let pos = randPath();
-  // Try up to 30 positions to satisfy placement rules
+  let pos = randPath(level);
   for (let attempt = 0; attempt < 30; attempt++) {
-    const candidate = randPath();
+    const candidate = randPath(level);
     if (_isClearForFood(candidate, kind, entities)) { pos = candidate; break; }
   }
   entities.push({
@@ -293,7 +291,7 @@ function _spawnEnemy(entities: Entity[], kind: EntityKind, level: number) {
   const speed = enemySpeed(base, level);
   const angle = Math.random() * Math.PI * 2;
   entities.push({
-    id: uid(), kind, pos: randEdgePath(),
+    id: uid(), kind, pos: randEdgePath(level),
     vel: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed },
     radius: 18, active: true,
   });
@@ -376,8 +374,8 @@ export function tickEngine(state: EngineState): void {
     x: state.player.x + state.playerVel.x,
     y: state.player.y + state.playerVel.y,
   };
-  const resolved = resolveWallCollision(newPos, state.playerVel, PLAYER_RADIUS);
-  state.player = applyTunnelWrap(resolved.pos);
+  const resolved = resolveWallCollision(newPos, state.playerVel, PLAYER_RADIUS, state.level);
+  state.player = applyTunnelWrap(resolved.pos, state.level);
   state.playerVel = resolved.vel;
 
   // Clamp y only; x wraps through the tunnel
@@ -444,8 +442,8 @@ export function tickEngine(state: EngineState): void {
     }
 
     const newE = { x: e.pos.x + e.vel.x, y: e.pos.y + e.vel.y };
-    const er = resolveWallCollision(newE, e.vel, 14);
-    e.pos = applyTunnelWrap(er.pos);
+    const er = resolveWallCollision(newE, e.vel, 14, state.level);
+    e.pos = applyTunnelWrap(er.pos, state.level);
     e.vel = er.vel;
 
     if (Math.abs(e.vel.x) < 0.1 && Math.abs(e.vel.y) < 0.1) {
@@ -462,11 +460,11 @@ export function tickEngine(state: EngineState): void {
 
   // Always top up healthy foods to the minimum immediately (no timer gating)
   if (healthyCount < MIN_HEALTHY_ON_SCREEN) {
-    _spawnFood(state.entities, true);
+    _spawnFood(state.entities, true, state.level);
   }
 
   if (state.spawnFoodTimer >= SPAWN_INTERVAL_FOOD && foodCount < 12) {
-    _spawnFood(state.entities);
+    _spawnFood(state.entities, false, state.level);
     state.spawnFoodTimer = 0;
   }
 
@@ -586,7 +584,7 @@ export function tickEngine(state: EngineState): void {
     const smlen = Math.sqrt(sm.vel.x ** 2 + sm.vel.y ** 2);
     if (smlen > smSpeed) { sm.vel.x = (sm.vel.x / smlen) * smSpeed; sm.vel.y = (sm.vel.y / smlen) * smSpeed; }
     const newSm = { x: sm.pos.x + sm.vel.x, y: sm.pos.y + sm.vel.y };
-    const smr = resolveWallCollision(newSm, sm.vel, 14);
+    const smr = resolveWallCollision(newSm, sm.vel, 14, state.level);
     sm.pos = smr.pos;
     sm.vel = smr.vel;
 

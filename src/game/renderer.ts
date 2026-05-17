@@ -1,7 +1,7 @@
 import { Entity, GameState, Particle, Vec2 } from './types';
 import {
   CANVAS_W, CANVAS_H, TILE, HUD_H,
-  MAZE, MAZE_COLS, MAZE_ROWS, MAZE_X, MAZE_Y,
+  MAZE, MAZES, LEVEL_COLORS, MAZE_COLS, MAZE_ROWS, MAZE_X, MAZE_Y,
 } from './constants';
 
 // ── Low-level helpers ─────────────────────────────────────────────────────────
@@ -16,9 +16,13 @@ export function tileCenter(col: number, row: number): Vec2 {
   };
 }
 
-export function isWall(col: number, row: number): boolean {
+export function mazeForLevel(level: number): number[][] {
+  return MAZES[(level - 1) % MAZES.length];
+}
+
+export function isWall(col: number, row: number, level = 1): boolean {
   if (row < 0 || row >= MAZE_ROWS || col < 0 || col >= MAZE_COLS) return true;
-  return MAZE[row][col] === 1;
+  return mazeForLevel(level)[row][col] === 1;
 }
 
 function c(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, fill: string) {
@@ -56,21 +60,25 @@ function noGlow(ctx: CanvasRenderingContext2D) {
 
 // ── Maze ──────────────────────────────────────────────────────────────────────
 
-export function drawMaze(ctx: CanvasRenderingContext2D) {
-  ctx.fillStyle = '#07070f';
+export function drawMaze(ctx: CanvasRenderingContext2D, level = 1) {
+  const maze = mazeForLevel(level);
+  const ci = (level - 1) % LEVEL_COLORS.length;
+  const [wallFill, wallStroke, wallInner, bgColor] = LEVEL_COLORS[ci];
+
+  ctx.fillStyle = bgColor;
   ctx.fillRect(MAZE_X, MAZE_Y, MAZE_COLS * TILE, MAZE_ROWS * TILE);
 
   for (let row = 0; row < MAZE_ROWS; row++) {
     for (let col = 0; col < MAZE_COLS; col++) {
-      if (MAZE[row][col] === 1) {
+      if (maze[row][col] === 1) {
         const x = MAZE_X + col * TILE;
         const y = MAZE_Y + row * TILE;
-        ctx.fillStyle = '#091540';
+        ctx.fillStyle = wallFill;
         ctx.fillRect(x, y, TILE, TILE);
-        ctx.strokeStyle = '#1e40af';
+        ctx.strokeStyle = wallStroke;
         ctx.lineWidth = 3;
         ctx.strokeRect(x + 1.5, y + 1.5, TILE - 3, TILE - 3);
-        ctx.strokeStyle = 'rgba(96,165,250,0.35)';
+        ctx.strokeStyle = wallInner;
         ctx.lineWidth = 1;
         ctx.strokeRect(x + 5, y + 5, TILE - 10, TILE - 10);
       }
@@ -700,7 +708,7 @@ export function drawTitleScreen(ctx: CanvasRenderingContext2D, time: number) {
 
   // Dimmed maze background
   ctx.globalAlpha = 0.15;
-  drawMaze(ctx);
+  drawMaze(ctx, 1);
   ctx.globalAlpha = 1;
 
   // Decorative mini-entities in background corners

@@ -43,7 +43,7 @@ export const RELAX_DURATION      = 180;
 export const SPAWN_INTERVAL_FOOD  = 160;
 export const SPAWN_INTERVAL_ENEMY = 400;
 export const MAX_FOODS   = 12;
-export const MAX_ENEMIES = 3;  // level 1 baseline; capped at 5 via maxEnemiesForLevel
+export const MAX_ENEMIES = 2;  // level 1 baseline; capped at 4 via maxEnemiesForLevel
 
 export const HEALTHY_FOODS   = ['salmon', 'broccoli', 'nuts'] as const;
 export const UNHEALTHY_FOODS = ['donut', 'fries', 'cigarette'] as const;

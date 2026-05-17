@@ -72,7 +72,7 @@ function stressGain(base: number, level: number): number {
 }
 
 function maxEnemiesForLevel(level: number): number {
-  return Math.min(5, MAX_ENEMIES + (level - 1) * LEVEL_MAX_ENEMIES_BONUS);
+  return Math.min(4, MAX_ENEMIES + (level - 1) * LEVEL_MAX_ENEMIES_BONUS);
 }
 
 // ── Fixed chair positions ─────────────────────────────────────────────────────

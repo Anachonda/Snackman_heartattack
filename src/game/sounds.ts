@@ -3,7 +3,9 @@
 
 // ── Music ─────────────────────────────────────────────────────────────────────
 
-const MUSIC_URL = 'https://raw.githubusercontent.com/Anachonda/Snackman-game/main/public/audio/Snackman.mp3';
+// Local path first (served from /public/audio/), remote as fallback
+const MUSIC_URL_LOCAL  = '/audio/Snackman.mp3';
+const MUSIC_URL_REMOTE = 'https://raw.githubusercontent.com/Anachonda/Snackman-game/main/public/audio/Snackman.mp3';
 const MUSIC_VOL   = 0.35;
 const RATE_MIN    = 0.90;
 const RATE_MAX    = 1.50;
@@ -20,20 +22,52 @@ export function setMusicEnabled(on: boolean): void {
   _musicEnabled = on;
   if (!_el) return;
   if (!on) _el.pause();
-  else if (_el.paused) _el.play().catch(() => {});
+  else if (_el.paused) _playMusic();
+}
+
+function _playMusic(): void {
+  if (!_el || !_musicEnabled) return;
+  const p = _el.play();
+  if (p) {
+    p.catch(() => {
+      // Autoplay blocked — will retry on next updateMusic tick
+    });
+  }
 }
 
 export function initMusic(): void {
   if (_el) {
-    if (_musicEnabled && _el.paused) _el.play().catch(() => {});
+    if (_musicEnabled && _el.paused) _playMusic();
     return;
   }
-  _el = new Audio(MUSIC_URL);
+  _el = new Audio();
   _el.loop = true;
   _el.volume = 0;
   _el.playbackRate = RATE_MIN;
   _el.preload = 'auto';
-  if (_musicEnabled) _el.play().catch(() => {});
+
+  // On mobile, loop attribute can silently fail for buffered remote audio.
+  // ended-event is a reliable fallback.
+  _el.addEventListener('ended', () => {
+    if (!_el || !_musicEnabled) return;
+    _el.currentTime = 0;
+    _playMusic();
+  });
+
+  // Try local first; if it 404s, switch to remote
+  _el.src = MUSIC_URL_LOCAL;
+  _el.addEventListener('error', () => {
+    if (!_el) return;
+    // Only switch to remote if we were still trying local
+    if (_el.src.includes(MUSIC_URL_LOCAL.replace(/^\//, ''))) {
+      _el.src = MUSIC_URL_REMOTE;
+      _el.load();
+      if (_musicEnabled) _playMusic();
+    }
+  }, { once: true });
+
+  _el.load();
+  if (_musicEnabled) _playMusic();
 }
 
 export function updateMusic(phase: string, stress: number): void {
@@ -45,7 +79,8 @@ export function updateMusic(phase: string, stress: number): void {
   } else if (phase === 'paused') {
     _el.volume = Math.max(0.12, _el.volume - FADE_STEP * 0.5);
   } else {
-    if (_el.paused) _el.play().catch(() => {});
+    // Re-trigger play if browser paused us (e.g. screen lock / tab switch)
+    if (_el.paused) _playMusic();
     _el.volume = Math.min(MUSIC_VOL, _el.volume + FADE_STEP);
   }
   _targetRate = RATE_MIN + (stress / 100) * (RATE_MAX - RATE_MIN);

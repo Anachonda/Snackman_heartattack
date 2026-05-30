@@ -46,27 +46,24 @@ export function initMusic(): void {
   _el.playbackRate = RATE_MIN;
   _el.preload = 'auto';
 
-  // On mobile, loop attribute can silently fail for buffered remote audio.
-  // ended-event is a reliable fallback.
   _el.addEventListener('ended', () => {
     if (!_el || !_musicEnabled) return;
     _el.currentTime = 0;
     _playMusic();
   });
 
-  // Try local first; if it 404s, switch to remote
-  _el.src = MUSIC_URL_LOCAL;
+  let triedRemote = false;
   _el.addEventListener('error', () => {
-    if (!_el) return;
-    // Only switch to remote if we were still trying local
-    if (_el.src.includes(MUSIC_URL_LOCAL.replace(/^\//, ''))) {
-      _el.src = MUSIC_URL_REMOTE;
-      _el.load();
-      if (_musicEnabled) _playMusic();
-    }
+    if (!_el || triedRemote) return;
+    triedRemote = true;
+    _el.src = MUSIC_URL_REMOTE;
+    _el.load();
+    if (_musicEnabled) _playMusic();
   }, { once: true });
 
-  _el.load();
+  _el.src = MUSIC_URL_LOCAL;
+  // Call play() synchronously inside the user gesture so iOS unlocks audio.
+  // Volume starts at 0 so there's no audible pop before the fade-in.
   if (_musicEnabled) _playMusic();
 }
 

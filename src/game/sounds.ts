@@ -1,95 +1,7 @@
 // Audio module: background music + minimal SFX via Web Audio API.
-// All audio must be initialized inside a user gesture (initMusic).
+// All audio must be initialized inside a user gesture (initMusic/initSfx).
 
-// ── Music ─────────────────────────────────────────────────────────────────────
-
-// Local path first (served from /public/audio/), remote as fallback
-const MUSIC_URL_LOCAL  = '/audio/Snackman.mp3';
-const MUSIC_URL_REMOTE = 'https://raw.githubusercontent.com/Anachonda/Snackman-game/main/public/audio/Snackman.mp3';
-const MUSIC_VOL   = 0.35;
-const RATE_MIN    = 0.90;
-const RATE_MAX    = 1.50;
-const RATE_SMOOTH = 0.015;
-const FADE_STEP   = 0.016;
-
-let _el: HTMLAudioElement | null = null;
-let _musicEnabled = true;
-let _targetRate = RATE_MIN;
-
-export function getMusicEnabled(): boolean { return _musicEnabled; }
-
-export function setMusicEnabled(on: boolean): void {
-  _musicEnabled = on;
-  if (!_el) return;
-  if (!on) _el.pause();
-  else if (_el.paused) _playMusic();
-}
-
-function _playMusic(): void {
-  if (!_el || !_musicEnabled) return;
-  const p = _el.play();
-  if (p) {
-    p.catch(() => {
-      // Autoplay blocked — will retry on next updateMusic tick
-    });
-  }
-}
-
-export function initMusic(): void {
-  if (_el) {
-    if (_musicEnabled && _el.paused) _playMusic();
-    return;
-  }
-  _el = new Audio();
-  _el.loop = true;
-  _el.volume = 0;
-  _el.playbackRate = RATE_MIN;
-  _el.preload = 'auto';
-
-  _el.addEventListener('ended', () => {
-    if (!_el || !_musicEnabled) return;
-    _el.currentTime = 0;
-    _playMusic();
-  });
-
-  let triedRemote = false;
-  _el.addEventListener('error', () => {
-    if (!_el || triedRemote) return;
-    triedRemote = true;
-    _el.src = MUSIC_URL_REMOTE;
-    _el.load();
-    if (_musicEnabled) _playMusic();
-  }, { once: true });
-
-  _el.src = MUSIC_URL_LOCAL;
-  // Call play() synchronously inside the user gesture so iOS unlocks audio.
-  // Volume starts at 0 so there's no audible pop before the fade-in.
-  if (_musicEnabled) _playMusic();
-}
-
-export function updateMusic(phase: string, stress: number): void {
-  if (!_el || !_musicEnabled) return;
-  const active = phase === 'playing' || phase === 'paused';
-  if (!active) {
-    _el.volume = Math.max(0, _el.volume - FADE_STEP * 1.5);
-    if (_el.volume <= 0 && !_el.paused) _el.pause();
-  } else if (phase === 'paused') {
-    _el.volume = Math.max(0.12, _el.volume - FADE_STEP * 0.5);
-  } else {
-    // Re-trigger play if browser paused us (e.g. screen lock / tab switch)
-    if (_el.paused) _playMusic();
-    _el.volume = Math.min(MUSIC_VOL, _el.volume + FADE_STEP);
-  }
-  _targetRate = RATE_MIN + (stress / 100) * (RATE_MAX - RATE_MIN);
-  const diff = _targetRate - _el.playbackRate;
-  _el.playbackRate += Math.sign(diff) * Math.min(Math.abs(diff), RATE_SMOOTH);
-}
-
-export function stopMusic(): void {
-  if (_el) { _el.pause(); _el.volume = 0; _el.playbackRate = RATE_MIN; }
-}
-
-// ── SFX via Web Audio ─────────────────────────────────────────────────────────
+// ── Shared AudioContext ───────────────────────────────────────────────────────
 
 let _ctx: AudioContext | null = null;
 
@@ -98,11 +10,135 @@ function ctx(): AudioContext | null {
   return _ctx;
 }
 
-// Called alongside initMusic() so the AudioContext is created in the same gesture.
 export function initSfx(): void {
   if (_ctx) return;
   _ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
 }
+
+// ── Music ─────────────────────────────────────────────────────────────────────
+
+const MUSIC_URL_LOCAL  = '/audio/Snackman.mp3';
+const MUSIC_URL_REMOTE = 'https://raw.githubusercontent.com/Anachonda/Snackman-game/main/public/audio/Snackman.mp3';
+const MUSIC_VOL   = 0.35;
+const RATE_MIN    = 0.90;
+const RATE_MAX    = 1.50;
+const RATE_SMOOTH = 0.015;
+const FADE_STEP   = 0.016;
+
+let _musicEnabled = true;
+let _buffer: AudioBuffer | null = null;
+let _source: AudioBufferSourceNode | null = null;
+let _gainNode: GainNode | null = null;
+let _currentVolume = 0;
+let _currentRate = RATE_MIN;
+let _targetRate = RATE_MIN;
+let _musicPlaying = false;
+
+export function getMusicEnabled(): boolean { return _musicEnabled; }
+
+export function setMusicEnabled(on: boolean): void {
+  _musicEnabled = on;
+  if (!on) {
+    _stopSource();
+    _musicPlaying = false;
+  } else if (_buffer && !_musicPlaying) {
+    _startSource();
+  }
+}
+
+function _startSource(): void {
+  if (!_ctx || !_buffer || !_gainNode || !_musicEnabled) return;
+  _stopSource();
+  _source = _ctx.createBufferSource();
+  _source.buffer = _buffer;
+  _source.loop = true;
+  _source.playbackRate.value = _currentRate;
+  _source.connect(_gainNode);
+  _source.start();
+  _musicPlaying = true;
+}
+
+function _stopSource(): void {
+  if (_source) {
+    try { _source.stop(); } catch (_) { /* already stopped */ }
+    _source.disconnect();
+    _source = null;
+  }
+  _musicPlaying = false;
+}
+
+async function _loadBuffer(url: string): Promise<AudioBuffer | null> {
+  if (!_ctx) return null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('fetch failed');
+    const raw = await res.arrayBuffer();
+    return await _ctx.decodeAudioData(raw);
+  } catch (_) {
+    return null;
+  }
+}
+
+export function initMusic(): void {
+  if (!_ctx) return;
+
+  // Resume context synchronously inside user gesture so iOS unlocks audio.
+  _ctx.resume().catch(() => {});
+
+  if (_buffer) {
+    if (_musicEnabled && !_musicPlaying) _startSource();
+    return;
+  }
+
+  // Set up gain node once
+  if (!_gainNode) {
+    _gainNode = _ctx.createGain();
+    _gainNode.gain.value = 0;
+    _gainNode.connect(_ctx.destination);
+  }
+
+  // Load buffer async — local first, remote fallback
+  (async () => {
+    let buf = await _loadBuffer(MUSIC_URL_LOCAL);
+    if (!buf) buf = await _loadBuffer(MUSIC_URL_REMOTE);
+    if (!buf) return;
+    _buffer = buf;
+    if (_musicEnabled) _startSource();
+  })();
+}
+
+export function updateMusic(phase: string, stress: number): void {
+  if (!_gainNode || !_musicEnabled) return;
+
+  const active = phase === 'playing' || phase === 'paused';
+
+  if (!active) {
+    _currentVolume = Math.max(0, _currentVolume - FADE_STEP * 1.5);
+    _gainNode.gain.value = _currentVolume;
+    if (_currentVolume <= 0 && _musicPlaying) _stopSource();
+  } else if (phase === 'paused') {
+    _currentVolume = Math.max(0.12, _currentVolume - FADE_STEP * 0.5);
+    _gainNode.gain.value = _currentVolume;
+  } else {
+    if (!_musicPlaying && _buffer) _startSource();
+    _currentVolume = Math.min(MUSIC_VOL, _currentVolume + FADE_STEP);
+    _gainNode.gain.value = _currentVolume;
+  }
+
+  _targetRate = RATE_MIN + (stress / 100) * (RATE_MAX - RATE_MIN);
+  const diff = _targetRate - _currentRate;
+  _currentRate += Math.sign(diff) * Math.min(Math.abs(diff), RATE_SMOOTH);
+  if (_source) _source.playbackRate.value = _currentRate;
+}
+
+export function stopMusic(): void {
+  _stopSource();
+  _currentVolume = 0;
+  _currentRate = RATE_MIN;
+  if (_gainNode) _gainNode.gain.value = 0;
+}
+
+// ── SFX ───────────────────────────────────────────────────────────────────────
 
 function master(gain: number): GainNode {
   const g = ctx()!.createGain();
